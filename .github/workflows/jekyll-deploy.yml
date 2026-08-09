@@ -1,0 +1,57 @@
+name: Jekyll deploy (reusable)
+
+# Builds the caller's Jekyll site and publishes it to the caller's gh-pages
+# branch, preserving PR previews under pr-preview/. Callers own the trigger,
+# permissions (contents: write), and the gh-pages-write concurrency group.
+on:
+  workflow_call:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Build
+        run: bundle exec jekyll build
+        env:
+          JEKYLL_ENV: production
+
+      - name: Publish to gh-pages (preserving PR previews)
+        run: |
+          set -euo pipefail
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Attach a worktree to gh-pages, creating the branch on first run.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages
+            git worktree add -B gh-pages ../ghp origin/gh-pages
+          else
+            echo "gh-pages does not exist yet — creating it."
+            git worktree add --detach ../ghp
+            git -C ../ghp checkout --orphan gh-pages
+            git -C ../ghp rm -rf --cached . >/dev/null 2>&1 || true
+            find ../ghp -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          fi
+
+          # Replace the production tree, but never touch previews.
+          find ../ghp -mindepth 1 -maxdepth 1 \
+            ! -name .git ! -name pr-preview -exec rm -rf {} +
+          cp -r _site/. ../ghp/
+          touch ../ghp/.nojekyll
+
+          cd ../ghp
+          git add -A
+          git commit -m "deploy: ${GITHUB_SHA::7}" || { echo "No changes to publish."; exit 0; }
+          for i in 1 2 3; do
+            git push origin gh-pages && exit 0
+            git pull --rebase origin gh-pages
+          done
+          echo "Failed to push after 3 attempts." >&2
+          exit 1

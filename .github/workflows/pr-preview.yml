@@ -1,0 +1,277 @@
+name: PR preview (reusable)
+
+# Publishes a per-PR preview of the caller's Jekyll site to
+# gh-pages/pr-preview/pr-<n>/, upserts a sticky preview comment, computes a
+# Playwright visual diff against main, and cleans up when the PR closes.
+# Callers own the pull_request trigger, permissions (contents: write,
+# pull-requests: write), and the gh-pages-write concurrency group.
+on:
+  workflow_call:
+
+jobs:
+  preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    env:
+      PR: ${{ github.event.number }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      # A synchronize run can be queued before a PR closes. Skip the build when
+      # it's already closed at job start; Publish/Upsert additionally re-check
+      # live state immediately before their side effects (a close can land
+      # mid-build, after cleanup already removed the preview).
+      - name: Check PR state
+        id: state
+        run: |
+          set -euo pipefail
+          STATE=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '.state')
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+          [ "$STATE" = "open" ] || echo "PR #${PR} is $STATE at job start — skipping build."
+
+      - name: Derive repo coordinates
+        id: coords
+        run: |
+          set -euo pipefail
+          echo "repo=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Build with the preview baseurl
+        if: steps.state.outputs.state == 'open'
+        run: bundle exec jekyll build --baseurl "/${{ steps.coords.outputs.repo }}/pr-preview/pr-${PR}"
+
+      - name: Publish the preview
+        if: steps.state.outputs.state == 'open'
+        run: |
+          set -euo pipefail
+          # Fresh re-check right before the side effect: the PR may have closed
+          # during the build and cleanup may already have removed the preview.
+          if [ "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '.state')" != "open" ]; then
+            echo "PR #${PR} is no longer open — skipping publish."
+            exit 0
+          fi
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages
+          git worktree add -B gh-pages ../ghp origin/gh-pages
+          rm -rf "../ghp/pr-preview/pr-${PR}"
+          mkdir -p "../ghp/pr-preview/pr-${PR}"
+          cp -r _site/. "../ghp/pr-preview/pr-${PR}/"
+          cd ../ghp
+          git add -A -- "pr-preview/pr-${PR}"
+          git commit -m "preview: PR #${PR} (${GITHUB_SHA::7})" || { echo "No preview changes."; exit 0; }
+          for i in 1 2 3; do
+            git push origin gh-pages && exit 0
+            git pull --rebase origin gh-pages
+          done
+          echo "Failed to push after 3 attempts." >&2
+          exit 1
+
+      - name: Upsert the sticky comment
+        if: steps.state.outputs.state == 'open'
+        run: |
+          set -euo pipefail
+          # Fresh re-check right before the side effect: don't post a preview
+          # link on a PR that closed during the build.
+          if [ "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '.state')" != "open" ]; then
+            echo "PR #${PR} is no longer open — skipping comment."
+            exit 0
+          fi
+          URL="https://${{ steps.coords.outputs.owner }}.github.io/${{ steps.coords.outputs.repo }}/pr-preview/pr-${PR}/"
+          BODY="<!-- pr-preview -->
+          ### 🔎 Preview this change
+
+          **[Open the preview site](${URL})**
+
+          Built from \`${GITHUB_SHA::7}\`. Updates on every push. Removed when this PR closes."
+          ID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+                --jq 'map(select(.body | startswith("<!-- pr-preview -->"))) | .[0].id // empty')
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${ID}" -f body="$BODY" >/dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$BODY" >/dev/null
+          fi
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    env:
+      PR: ${{ github.event.number }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      # Check out gh-pages directly. A closed PR's merge ref may no longer
+      # exist, so a default checkout can fail — and this job needs no PR code.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: gh-pages
+
+      - name: Remove the preview
+        run: |
+          set -euo pipefail
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ ! -d "pr-preview/pr-${PR}" ]; then
+            echo "No preview to remove."
+            exit 0
+          fi
+          rm -rf "pr-preview/pr-${PR}"
+          git add -A -- "pr-preview/pr-${PR}"
+          git commit -m "preview: remove PR #${PR}"
+          for i in 1 2 3; do
+            git push origin gh-pages && exit 0
+            git pull --rebase origin gh-pages
+          done
+          echo "Failed to push after 3 attempts." >&2
+          exit 1
+
+      - name: Update the sticky comment
+        run: |
+          set -euo pipefail
+          BODY="<!-- pr-preview -->
+          ### 🔎 Preview
+
+          Removed — this PR is closed."
+          ID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+                --jq 'map(select(.body | startswith("<!-- pr-preview -->"))) | .[0].id // empty')
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${ID}" -f body="$BODY" >/dev/null
+          fi
+
+  diff:
+    if: github.event.action != 'closed'
+    needs: preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PR: ${{ github.event.number }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check PR state
+        id: state
+        run: |
+          set -euo pipefail
+          STATE=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '.state')
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+          [ "$STATE" = "open" ] || echo "PR #${PR} is $STATE at job start — skipping diff."
+
+      - name: Derive repo coordinates
+        id: coords
+        run: |
+          set -euo pipefail
+          echo "repo=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # The diff tooling lives in this (volundr) repo, not the caller.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: SiliconSaga/volundr
+          path: .volundr
+
+      - uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Install diff tooling
+        if: steps.state.outputs.state == 'open'
+        working-directory: .volundr/visual-diff
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build candidate (PR) at baseurl ""
+        if: steps.state.outputs.state == 'open'
+        run: |
+          set -euo pipefail
+          bundle exec jekyll build --baseurl "" \
+            --config _config.yml,.volundr/visual-diff/_config.ci.yml \
+            --destination _site_pr
+
+      # Check out main AFTER the candidate build, so baseline/ can't be picked
+      # up as content by the candidate build (which would inject phantom
+      # /baseline/* routes).
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        if: steps.state.outputs.state == 'open'
+        with:
+          ref: main
+          path: baseline
+
+      - name: Build baseline (main) at baseurl ""
+        if: steps.state.outputs.state == 'open'
+        run: |
+          set -euo pipefail
+          # Build main's source with THIS bundle (identical pinned gems) and the
+          # shared overlay, so baseline works regardless of main's own state.
+          bundle exec jekyll build --source baseline --baseurl "" \
+            --config baseline/_config.yml,.volundr/visual-diff/_config.ci.yml \
+            --destination _site_main
+
+      - name: Screenshot both builds
+        if: steps.state.outputs.state == 'open'
+        run: |
+          set -euo pipefail
+          node .volundr/visual-diff/shoot.mjs _site_main .volundr/visual-diff/shots/main
+          node .volundr/visual-diff/shoot.mjs _site_pr   .volundr/visual-diff/shots/pr
+
+      - name: Compute the diff
+        if: steps.state.outputs.state == 'open'
+        run: |
+          set -euo pipefail
+          node .volundr/visual-diff/diff.mjs \
+            .volundr/visual-diff/shots/main .volundr/visual-diff/shots/pr \
+            _diff "https://${{ steps.coords.outputs.owner }}.github.io/${{ steps.coords.outputs.repo }}/pr-preview/pr-${PR}/_diff/"
+
+      - name: Publish _diff/ into the preview
+        if: steps.state.outputs.state == 'open'
+        run: |
+          set -euo pipefail
+          if [ "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '.state')" != "open" ]; then
+            echo "PR #${PR} closed during diff — skipping publish."; exit 0
+          fi
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages
+          git worktree add -B gh-pages ../ghp origin/gh-pages
+          rm -rf "../ghp/pr-preview/pr-${PR}/_diff"
+          mkdir -p "../ghp/pr-preview/pr-${PR}/_diff"
+          cp -r _diff/. "../ghp/pr-preview/pr-${PR}/_diff/"
+          rm -f "../ghp/pr-preview/pr-${PR}/_diff/comment.md"
+          cd ../ghp
+          git add -A -- "pr-preview/pr-${PR}/_diff"
+          git commit -m "diff: PR #${PR} (${GITHUB_SHA::7})" || { echo "No diff changes."; exit 0; }
+          for i in 1 2 3; do
+            git push origin gh-pages && exit 0
+            git pull --rebase origin gh-pages
+          done
+          echo "Failed to push after 3 attempts." >&2
+          exit 1
+
+      - name: Upsert the visual-diff comment
+        if: steps.state.outputs.state == 'open'
+        run: |
+          set -euo pipefail
+          if [ "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '.state')" != "open" ]; then
+            echo "PR #${PR} closed — skipping comment."; exit 0
+          fi
+          BODY="$(cat _diff/comment.md)"
+          ID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+                --jq 'map(select(.body | startswith("<!-- pr-visual-diff -->"))) | .[0].id // empty')
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${ID}" -f body="$BODY" >/dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$BODY" >/dev/null
+          fi

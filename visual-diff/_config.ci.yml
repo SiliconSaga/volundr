@@ -1,0 +1,12 @@
+# CI-only overlay for the visual-diff build. Layered over the caller site's
+# _config.yml via `--config _config.yml,.volundr/visual-diff/_config.ci.yml`,
+# so the site's real url/baseurl (the subdomain-flip story) stays untouched in
+# production.
+#
+# Two things the diff build needs that production deliberately omits:
+#   - url:      jekyll-sitemap emits nothing without a url.
+#   - plugins:  jekyll-sitemap is an OPTIONAL GitHub Pages plugin (bundled by
+#               the github-pages gem but not auto-enabled); it must be listed.
+url: "http://localhost:4000"
+plugins:
+  - jekyll-sitemap
