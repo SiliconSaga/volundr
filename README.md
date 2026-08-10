@@ -64,7 +64,7 @@ Caller assumptions: a Jekyll site with a checked-in `Gemfile` (the `github-pages
 
 - Callers live in this org and reference `@main`; this repo's `main` is branch-protected, which is the deliberate trade-off in place of per-caller SHA pinning (pinning would reinstate the copy drift this repo exists to remove). Revisit if an out-of-org caller ever appears.
 - No custom secrets anywhere — jobs use only the ephemeral `GITHUB_TOKEN`, scoped by each caller's `permissions:` block.
-- The pr-preview diff job checks out this repo with the caller's `GITHUB_TOKEN` — volundr must stay public (or callers need an explicit token grant) or every caller's visual diff breaks.
+- The pr-preview diff job checks out this repo with the caller's `GITHUB_TOKEN`, which cannot read a different private repository — **volundr must remain public**, or every caller's visual diff breaks. (Supporting a private volundr would mean plumbing a dedicated token through a `workflow_call` secret; deliberately not built.)
 - Preview jobs write only to `gh-pages/pr-preview/<pr>/` and PR comments; production deploys run only from push-to-main on branch-protected callers, so a human merge is always the publish gate.
 
 ## Follow-ups
