@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { san } from './slug.mjs';
+import { snapBox } from './snap.mjs';
 
 const [, , baseDir, candDir, pubDir, previewUrl] = process.argv;
 if (!baseDir || !candDir || !pubDir || !previewUrl) {
@@ -29,6 +30,8 @@ const DIFF_ALPHA = 0.5;
 // they are invisible until you zoom.
 const DILATE = 2;
 const BOX_STROKE = 3;   // outline drawn around the changed region on the marked shot
+// Edge placement for the ring lives in snap.mjs (testable in isolation): edges
+// grow outward to quiet seams of the after image with room for the stroke band.
 
 const baseRoutes = JSON.parse(readFileSync(join(baseDir, 'routes.json'), 'utf8'));
 const candRoutes = JSON.parse(readFileSync(join(candDir, 'routes.json'), 'utf8'));
@@ -106,11 +109,10 @@ function paint(png, mask, w, h, [r, g, b]) {
 // Copy of `src` with a hollow rectangle drawn around the box. This is the image a
 // non-technical reviewer actually reads: their own page, with a ring around the
 // part that moved — not a pixel mask, which is a debugging artifact.
-function markBox(src, box, w, h, stroke, [r, g, b]) {
+function markBox(src, box, w, h, stroke, [r, g, b], pad) {
   const out = new PNG({ width: w, height: h });
   PNG.bitblt(src, out, 0, 0, w, h, 0, 0);
   if (!box) return out;
-  const pad = stroke + 2;
   const x0 = Math.max(0, box.minX - pad), y0 = Math.max(0, box.minY - pad);
   const x1 = Math.min(w - 1, box.maxX + pad), y1 = Math.min(h - 1, box.maxY + pad);
   const put = (x, y) => {
@@ -168,11 +170,17 @@ for (const r of common) {
       // costs one more comparison, and only on routes that actually changed.
       const { mask, box } = changedMask(A, B, w, h, pmOpts);
       paint(diff, dilate(mask, w, h, DILATE), w, h, HILITE);
-      const marked = markBox(B, box, w, h, BOX_STROKE, HILITE);
-      writeFileSync(join(sub, `marked__${vp}.png`), PNG.sync.write(cropTo(marked, box, CROP_MARGIN, w, h)));
-      writeFileSync(join(sub, `before__${vp}.png`), PNG.sync.write(cropTo(A, box, CROP_MARGIN, w, h)));
-      writeFileSync(join(sub, `after__${vp}.png`), PNG.sync.write(cropTo(B, box, CROP_MARGIN, w, h)));
-      writeFileSync(join(sub, `diff__${vp}.png`), PNG.sync.write(cropTo(diff, box, CROP_MARGIN, w, h)));
+      // Snap to quiet seams of the after image so the ring lands in whitespace.
+      // Pad by exactly the stroke width: the stroke band then sits just OUTSIDE
+      // the snapped bounds — inside the seam, touching neither the ringed text
+      // nor (seams between text lines run ~10px at default line-height) the
+      // neighbouring line.
+      const snapped = snapBox(B, box, w, h, BOX_STROKE);
+      const marked = markBox(B, snapped, w, h, BOX_STROKE, HILITE, BOX_STROKE);
+      writeFileSync(join(sub, `marked__${vp}.png`), PNG.sync.write(cropTo(marked, snapped, CROP_MARGIN, w, h)));
+      writeFileSync(join(sub, `before__${vp}.png`), PNG.sync.write(cropTo(A, snapped, CROP_MARGIN, w, h)));
+      writeFileSync(join(sub, `after__${vp}.png`), PNG.sync.write(cropTo(B, snapped, CROP_MARGIN, w, h)));
+      writeFileSync(join(sub, `diff__${vp}.png`), PNG.sync.write(cropTo(diff, snapped, CROP_MARGIN, w, h)));
     }
   }
   if (routeChanged) changed.push(r);
@@ -192,7 +200,7 @@ writeFileSync(join(pubDir, 'summary.json'), JSON.stringify({ changed, added, rem
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 let html = `<!doctype html><meta charset=utf8><title>Visual diff PR</title>`
   + `<style>body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem}`
-  + `img{max-width:100%;border:1px solid #ccc}h2{margin-top:2.5rem}.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem}`
+  + `img{max-width:100%;border:1px solid #ccc}h2{margin-top:2.5rem}.grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}`
   + `.tag{font:12px monospace;background:#eee;padding:.1rem .4rem;border-radius:3px}</style>`;
 html += `<h1>Visual diff</h1><p>${changed.length} changed &middot; ${added.length} new &middot; ${removed.length} removed`
   + ` &middot; ${common.length} routes compared.</p>`;
@@ -200,12 +208,15 @@ for (const r of changed) {
   html += `<h2><span class=tag>${esc(r)}</span></h2>`;
   for (const vp of VIEWPORTS) {
     if (!existsSync(join(pubDir, san(r), `diff__${vp}.png`))) continue;
+    // No pixel-diff panel: the magenta mask tints ADDED glyphs the same as
+    // removed ones, which reads as "something was erased" when text appeared.
+    // The ringed shot plus before/after carries the story; the raw mask is
+    // still written next to these files for debugging, just not surfaced.
     html += `<h3>${vp}</h3>`
       + `<figure><figcaption>what changed</figcaption><img src="${san(r)}/marked__${vp}.png"></figure>`
       + `<div class=grid>`
       + `<figure><figcaption>before</figcaption><img src="${san(r)}/before__${vp}.png"></figure>`
-      + `<figure><figcaption>after</figcaption><img src="${san(r)}/after__${vp}.png"></figure>`
-      + `<figure><figcaption>pixel diff</figcaption><img src="${san(r)}/diff__${vp}.png"></figure></div>`;
+      + `<figure><figcaption>after</figcaption><img src="${san(r)}/after__${vp}.png"></figure></div>`;
   }
 }
 if (added.length) html += `<h2>New pages</h2><ul>${added.map((r) => `<li><span class=tag>${esc(r)}</span> `
@@ -231,8 +242,7 @@ if (!changed.length && !added.length && !removed.length) {
         // stays one click away rather than being the first thing they see.
         md += `**${vp}** — ![what changed](${previewUrl}${san(r)}/marked__${vp}.png)\n\n`
           + `[before](${previewUrl}${san(r)}/before__${vp}.png) &middot; `
-          + `[after](${previewUrl}${san(r)}/after__${vp}.png) &middot; `
-          + `[pixel diff](${previewUrl}${san(r)}/diff__${vp}.png)\n\n`;
+          + `[after](${previewUrl}${san(r)}/after__${vp}.png)\n\n`;
       }
     }
   }
