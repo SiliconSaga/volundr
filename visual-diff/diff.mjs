@@ -255,7 +255,7 @@ writeFileSync(join(pubDir, 'summary.json'), JSON.stringify({ changed, added, rem
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 let html = `<!doctype html><meta charset=utf8><title>Visual diff PR</title>`
   + `<style>body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem}`
-  + `img{max-width:100%;border:1px solid #ccc}h2{margin-top:2.5rem}.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem}`
+  + `img{max-width:100%;border:1px solid #ccc}h2{margin-top:2.5rem}.grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}`
   + `.tag{font:12px monospace;background:#eee;padding:.1rem .4rem;border-radius:3px}</style>`;
 html += `<h1>Visual diff</h1><p>${changed.length} changed &middot; ${added.length} new &middot; ${removed.length} removed`
   + ` &middot; ${common.length} routes compared.</p>`;
@@ -263,12 +263,15 @@ for (const r of changed) {
   html += `<h2><span class=tag>${esc(r)}</span></h2>`;
   for (const vp of VIEWPORTS) {
     if (!existsSync(join(pubDir, san(r), `diff__${vp}.png`))) continue;
+    // No pixel-diff panel: the magenta mask tints ADDED glyphs the same as
+    // removed ones, which reads as "something was erased" when text appeared.
+    // The ringed shot plus before/after carries the story; the raw mask is
+    // still written next to these files for debugging, just not surfaced.
     html += `<h3>${vp}</h3>`
       + `<figure><figcaption>what changed</figcaption><img src="${san(r)}/marked__${vp}.png"></figure>`
       + `<div class=grid>`
       + `<figure><figcaption>before</figcaption><img src="${san(r)}/before__${vp}.png"></figure>`
-      + `<figure><figcaption>after</figcaption><img src="${san(r)}/after__${vp}.png"></figure>`
-      + `<figure><figcaption>pixel diff</figcaption><img src="${san(r)}/diff__${vp}.png"></figure></div>`;
+      + `<figure><figcaption>after</figcaption><img src="${san(r)}/after__${vp}.png"></figure></div>`;
   }
 }
 if (added.length) html += `<h2>New pages</h2><ul>${added.map((r) => `<li><span class=tag>${esc(r)}</span> `
@@ -294,8 +297,7 @@ if (!changed.length && !added.length && !removed.length) {
         // stays one click away rather than being the first thing they see.
         md += `**${vp}** — ![what changed](${previewUrl}${san(r)}/marked__${vp}.png)\n\n`
           + `[before](${previewUrl}${san(r)}/before__${vp}.png) &middot; `
-          + `[after](${previewUrl}${san(r)}/after__${vp}.png) &middot; `
-          + `[pixel diff](${previewUrl}${san(r)}/diff__${vp}.png)\n\n`;
+          + `[after](${previewUrl}${san(r)}/after__${vp}.png)\n\n`;
       }
     }
   }
