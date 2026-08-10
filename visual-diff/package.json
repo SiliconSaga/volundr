@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "description": "PR visual-diff tooling (screenshot + pixel diff). Vanilla CI, no secrets.",
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "pixelmatch": "^6.0.0",
     "playwright": "^1.48.0",

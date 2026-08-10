@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { san } from './slug.mjs';
+import { snapBox } from './snap.mjs';
 
 const [, , baseDir, candDir, pubDir, previewUrl] = process.argv;
 if (!baseDir || !candDir || !pubDir || !previewUrl) {
@@ -29,18 +30,8 @@ const DIFF_ALPHA = 0.5;
 // they are invisible until you zoom.
 const DILATE = 2;
 const BOX_STROKE = 3;   // outline drawn around the changed region on the marked shot
-// A raw changed-pixel bounding box regularly slices through glyphs: remove one
-// word and the box's top edge lands on a comma's topmost pixel — mid-line —
-// so the ring reads as a strikethrough over words that never changed. Snap
-// each edge outward to the nearest "quiet" seam of the AFTER image (a run of
-// uniform background across the box's other axis): rows land in the gaps
-// between text lines, columns land in margins. Capped so busy layouts
-// (photos, gradients) with no seam nearby keep the raw edge. Columns get a
-// far larger cap on purpose — reaching the text column's margin turns a
-// disorienting mid-paragraph sliver into whole readable lines.
-const SNAP_ROWS = 48;
-const SNAP_COLS = 480;
-const QUIET_TOLERANCE = 8; // per-channel wiggle allowed within a "uniform" seam
+// Edge placement for the ring lives in snap.mjs (testable in isolation): edges
+// grow outward to quiet seams of the after image with room for the stroke band.
 
 const baseRoutes = JSON.parse(readFileSync(join(baseDir, 'routes.json'), 'utf8'));
 const candRoutes = JSON.parse(readFileSync(join(candDir, 'routes.json'), 'utf8'));
@@ -115,52 +106,6 @@ function paint(png, mask, w, h, [r, g, b]) {
   }
 }
 
-function isQuietRow(png, y, x0, x1) {
-  const i0 = (y * png.width + x0) * 4;
-  const r = png.data[i0], g = png.data[i0 + 1], b = png.data[i0 + 2];
-  for (let x = x0; x <= x1; x++) {
-    const i = (y * png.width + x) * 4;
-    if (Math.abs(png.data[i] - r) > QUIET_TOLERANCE
-      || Math.abs(png.data[i + 1] - g) > QUIET_TOLERANCE
-      || Math.abs(png.data[i + 2] - b) > QUIET_TOLERANCE) return false;
-  }
-  return true;
-}
-
-function isQuietCol(png, x, y0, y1) {
-  const i0 = (y0 * png.width + x) * 4;
-  const r = png.data[i0], g = png.data[i0 + 1], b = png.data[i0 + 2];
-  for (let y = y0; y <= y1; y++) {
-    const i = (y * png.width + x) * 4;
-    if (Math.abs(png.data[i] - r) > QUIET_TOLERANCE
-      || Math.abs(png.data[i + 1] - g) > QUIET_TOLERANCE
-      || Math.abs(png.data[i + 2] - b) > QUIET_TOLERANCE) return false;
-  }
-  return true;
-}
-
-// Expand each box edge outward to the nearest quiet seam of `png` (the AFTER
-// image), within per-axis caps. Rows first with the raw x-extent, then columns
-// with the widened y-extent, so a column seam is judged against every text
-// line the box now spans.
-function snapBox(png, box, w, h) {
-  if (!box) return box;
-  let { minX, minY, maxX, maxY } = box;
-  const seek = (start, limit, cap, probe, dir) => {
-    for (let d = 0; d <= cap; d++) {
-      const v = start + dir * d;
-      if (v < 0 || v > limit) return Math.max(0, Math.min(limit, v - dir));
-      if (probe(v)) return v;
-    }
-    return Math.max(0, Math.min(limit, start + dir * cap));
-  };
-  minY = seek(minY, h - 1, SNAP_ROWS, (y) => isQuietRow(png, y, minX, maxX), -1);
-  maxY = seek(maxY, h - 1, SNAP_ROWS, (y) => isQuietRow(png, y, minX, maxX), +1);
-  minX = seek(minX, w - 1, SNAP_COLS, (x) => isQuietCol(png, x, minY, maxY), -1);
-  maxX = seek(maxX, w - 1, SNAP_COLS, (x) => isQuietCol(png, x, minY, maxY), +1);
-  return { minX, minY, maxX, maxY };
-}
-
 // Copy of `src` with a hollow rectangle drawn around the box. This is the image a
 // non-technical reviewer actually reads: their own page, with a ring around the
 // part that moved — not a pixel mask, which is a debugging artifact.
@@ -230,7 +175,7 @@ for (const r of common) {
       // the snapped bounds — inside the seam, touching neither the ringed text
       // nor (seams between text lines run ~10px at default line-height) the
       // neighbouring line.
-      const snapped = snapBox(B, box, w, h);
+      const snapped = snapBox(B, box, w, h, BOX_STROKE);
       const marked = markBox(B, snapped, w, h, BOX_STROKE, HILITE, BOX_STROKE);
       writeFileSync(join(sub, `marked__${vp}.png`), PNG.sync.write(cropTo(marked, snapped, CROP_MARGIN, w, h)));
       writeFileSync(join(sub, `before__${vp}.png`), PNG.sync.write(cropTo(A, snapped, CROP_MARGIN, w, h)));
