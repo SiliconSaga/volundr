@@ -1,0 +1,51 @@
+name: Flyer export (reusable)
+
+# Regenerates a PR's committed flyer exports (PDF/PNG) from their HTML sources
+# and pushes the result back to the PR branch — so an agent or volunteer with
+# no local browser can complete a flyer change alone. Callers own the
+# pull_request trigger (paths: ['flyers/**']) and permissions (contents: write).
+# Local regeneration stays first-class: bash flyer-kit/export.sh <campaign-dir>.
+on:
+  workflow_call:
+
+jobs:
+  regenerate:
+    # Fork PRs carry a read-only GITHUB_TOKEN: skip rather than fail.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      # The flyer tooling lives in this (volundr) repo, not the caller.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: SiliconSaga/volundr
+          path: .volundr
+
+      - name: Regenerate exports for every flyer campaign
+        run: |
+          set -euo pipefail
+          # ubuntu-latest images ship Google Chrome; export.sh discovers it.
+          found=0
+          while IFS= read -r conf; do
+            found=1
+            dir="$(dirname "$conf")"
+            echo "== regenerating $dir"
+            bash .volundr/flyer-kit/export.sh "$dir"
+          done < <(find flyers -name flyers.conf 2>/dev/null || true)
+          if [ "$found" = "0" ]; then echo "No flyers.conf found — nothing to regenerate."; fi
+
+      - name: Commit regenerated exports back to the PR
+        run: |
+          set -euo pipefail
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- flyers
+          if git diff --cached --quiet; then
+            echo "Exports already current."
+            exit 0
+          fi
+          git commit -m "chore: regenerate flyer exports (${GITHUB_SHA::7})"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"

@@ -10,7 +10,9 @@ Ported from the battle-tested workflows in [ken-site](https://github.com/Silicon
 |---|---|
 | `.github/workflows/jekyll-deploy.yml` | Reusable: builds the caller's Jekyll site, publishes to its `gh-pages` branch, preserves `pr-preview/` |
 | `.github/workflows/pr-preview.yml` | Reusable: per-PR preview site + sticky comment + Playwright visual diff vs main + cleanup on close |
+| `.github/workflows/flyer-export.yml` | Reusable: regenerates a PR's committed flyer exports and pushes them back to the PR branch |
 | `visual-diff/` | The screenshot/diff tooling the pr-preview workflow checks out and runs |
+| `flyer-kit/` | Flyer machinery for sites: manifest-driven export script, QR generator, shared fonts, site seeder — see [flyer-kit/README](flyer-kit/README.md) |
 
 ## Using it from a site repo
 
