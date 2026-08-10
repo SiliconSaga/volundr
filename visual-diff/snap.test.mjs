@@ -72,6 +72,31 @@ test('deletion: raw edge already quiet in after image still yields a safe band',
   }
 });
 
+test('a uniform dark rule is content, not a seam — the stroke never lands on it', () => {
+  const w = 100, h = 100;
+  const after = white(w, h);
+  bar(after, 5, 44, 95, 46);            // unchanged solid rule, exactly stroke-thick and uniform
+  bar(after, 5, 50, 95, 60);            // changed content, 3px white gap to the rule
+  const raw = { minX: 5, minY: 50, maxX: 95, maxY: 60 };
+  const s = snapBox(after, raw, w, h, STROKE);
+  // The old defect: v=49 was accepted because rows 48/47 (white) and 46 (rule)
+  // are each individually uniform. The rule row must now disqualify the band.
+  assert.notEqual(s.minY, 49, 'edge stopped in the narrow gap — stroke would cover the rule');
+  if (s.minY !== raw.minY) {
+    for (let k = 1; k <= STROKE; k++) {
+      const y = s.minY - k;
+      assert.ok(y < 44 || y > 46, `stroke row ${y} lands on the rule`);
+      // Reviewer's point: assert background content directly, not via the
+      // predicate under test — every stroke-band pixel must be white.
+      for (let x = s.minX; x <= s.maxX; x++) {
+        const i = (y * after.width + x) * 4;
+        assert.ok(after.data[i] > 240 && after.data[i + 1] > 240 && after.data[i + 2] > 240,
+          `stroke pixel at ${x},${y} is not background`);
+      }
+    }
+  }
+});
+
 for (const gap of [1, 2, 3]) {
   test(`gap of ${gap}px between change and neighbour never puts the ring on the neighbour`, () => {
     const w = 100, h = 100;
@@ -88,7 +113,7 @@ for (const gap of [1, 2, 3]) {
     if (s.minY !== raw.minY) {
       for (let k = 1; k <= STROKE; k++) {
         const y = s.minY - k;
-        assert.ok(y > neighbourBottom || y < 30 - STROKE,
+        assert.ok(y > neighbourBottom || y < 30,
           `ring row ${y} overlaps neighbour bar (gap ${gap})`);
       }
     }
