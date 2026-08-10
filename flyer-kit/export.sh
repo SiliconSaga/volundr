@@ -10,6 +10,10 @@
 #     instagram.html       1080x1350     1      png      my-flyer-instagram
 #   pdf = emit print PDF alongside the PNG; png = PNG only.
 #
+# exports/ is rebuilt from scratch on every run — the manifest is the source
+# of truth, so a removed or renamed variant's old deliverables disappear
+# instead of lingering.
+#
 # Requires a Chromium-based browser. Set BROWSER to an executable to override
 # discovery (Windows/macOS app paths and PATH lookups are probed by default).
 set -euo pipefail
@@ -36,12 +40,34 @@ fi
 if [ -z "$BROWSER" ]; then echo "ERROR: no Edge/Chrome found (set BROWSER to your browser executable)" >&2; exit 1; fi
 
 HERE="$(cygpath -m "$(pwd)" 2>/dev/null || pwd)"
+rm -rf exports
 mkdir -p exports
 
-while read -r html size scale kind out _extra; do
-  case "$html" in ''|'#'*) continue ;; esac
-  if [ -z "${out:-}" ]; then echo "ERROR: malformed flyers.conf line: $html $size $scale ${kind:-}" >&2; exit 1; fi
-  w="${size%x*}"; h="${size#*x}"
+lineno=0
+fail() { # message — reports the offending line number and raw source line
+  echo "ERROR: flyers.conf line $lineno: $1" >&2
+  echo "  $raw" >&2
+  exit 1
+}
+
+# `|| [ -n "$raw" ]` keeps a final line that lacks a trailing newline.
+while IFS= read -r raw || [ -n "$raw" ]; do
+  lineno=$((lineno + 1))
+  line="${raw%$'\r'}"   # tolerate CRLF manifests from Windows editors
+  case "$line" in ''|'#'*) continue ;; esac
+  read -r html size scale kind out extra <<EOF_LINE
+$line
+EOF_LINE
+  if [ -z "${out:-}" ]; then fail "expected 5 columns: html widthxheight scale pdf|png outbase"; fi
+  if [ -n "${extra:-}" ]; then fail "unexpected extra column(s): $extra"; fi
+  if [ ! -f "$html" ]; then fail "html file not found: $html"; fi
+  w="${size%%x*}"; h="${size##*x}"
+  case "$w" in ''|*[!0-9]*) fail "bad widthxheight: $size" ;; esac
+  case "$h" in ''|*[!0-9]*) fail "bad widthxheight: $size" ;; esac
+  if [ "${w}x${h}" != "$size" ]; then fail "bad widthxheight: $size"; fi
+  case "$scale" in ''|*[!0-9]*) fail "scale must be a positive integer: $scale" ;; esac
+  case "$kind" in pdf|png) ;; *) fail "kind must be pdf or png: $kind" ;; esac
+
   "$BROWSER" --headless=new --disable-gpu --hide-scrollbars \
     --window-size="$w,$h" --force-device-scale-factor="$scale" \
     --screenshot="$HERE/exports/$out.png" "file:///$HERE/$html"

@@ -1,0 +1,8 @@
+# Shell scripts and workflow files must stay LF: a core.autocrlf=true checkout
+# on Windows would otherwise turn "set -euo pipefail" into "pipefail\r" and
+# break bash before it starts. Manifest parsing separately tolerates CRLF in
+# caller-owned flyers.conf files.
+*.sh text eol=lf
+*.mjs text eol=lf
+*.py text eol=lf
+*.yml text eol=lf

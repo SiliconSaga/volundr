@@ -56,7 +56,7 @@ jobs:
     uses: SiliconSaga/volundr/.github/workflows/flyer-export.yml@main
 ```
 
-Any PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The regeneration commit triggers one follow-up run that finds nothing to do and stops — no loop.
+Any PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The push uses the workflow's `GITHUB_TOKEN`, which GitHub deliberately does not let retrigger workflows: structurally no loop, and no follow-up run either — the PR's other checks reflect the pre-regeneration head, an accepted trade for the no-custom-secrets trust model (the site preview renders flyer HTML, which the regeneration commit never touches). PDFs are compared metadata-insensitively (`pdf-same.py` strips Chromium's per-run CreationDate/ModDate/ID), so regenerating an unchanged flyer commits nothing.
 
 ## Fonts
 

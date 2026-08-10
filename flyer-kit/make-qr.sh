@@ -19,5 +19,12 @@ for cand in python3 python; do
 done
 if [ -z "$PY" ]; then echo "ERROR: no working python3/python found" >&2; exit 1; fi
 
-"$PY" -c "import segno; segno.make('$URL', error='m').save('$OUT', scale=$SCALE, border=$BORDER, dark='$DARK', light='$LIGHT')"
+# Values travel as argv, never interpolated into Python source — a quote or
+# backslash in a URL is data, not code, and numerics are parsed as numerics.
+"$PY" - "$URL" "$OUT" "$DARK" "$LIGHT" "$SCALE" "$BORDER" <<'PYEOF'
+import sys
+import segno
+url, out, dark, light, scale, border = sys.argv[1:7]
+segno.make(url, error='m').save(out, scale=int(scale), border=int(border), dark=dark, light=light)
+PYEOF
 echo "wrote $OUT"
