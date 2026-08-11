@@ -1,0 +1,119 @@
+# The Create-page door for this aspect (design §3.7). Unlike the seeded
+# security template, this one really writes files and opens a pull request —
+# running it IS the adoption. The agent-side door is this module's SKILL.md;
+# both read the same standard.
+#
+# This door is CREATE-ONLY by construction. fetch:template renders whole
+# directories and overwrites, and publish:github:pull-request builds a pull
+# request from a workspace rather than merging into the target — so nothing
+# here can read the repo first. Each render is therefore split into its own
+# skeleton behind its own flag. Merging into a file that already exists is the
+# agent door's job, because that door reads before it writes.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: apply-website-hygiene-aspect
+  title: Apply the Website hygiene aspect
+  description: Adopt PR previews, visual diffing and deploy-through-the-forge for a static site — opens a pull request adding the Gemfile, both caller stubs, and the enrollment annotations.
+  annotations:
+    siliconsaga.org/aspect: 'website-hygiene'
+  links:
+    - url: https://github.com/SiliconSaga/volundr/blob/main/aspect/standard.yaml
+      title: The standard this adoption works toward
+    - url: https://github.com/SiliconSaga/volundr/blob/main/aspect/docs/pages-source.md
+      title: The manual step adoption cannot do for you
+spec:
+  owner: group:default/team-devex
+  type: aspect
+  parameters:
+    - title: Target site
+      required: [repoUrl, owner]
+      properties:
+        repoUrl:
+          title: Site repository
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts: [github.com]
+        owner:
+          title: Owning group
+          type: string
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: Group
+        createWorkflows:
+          title: This repo has no deploy.yml or pr-preview.yml yet
+          type: boolean
+          default: true
+          description: Uncheck if either workflow file already exists at those paths. This door creates files, it cannot merge them — a site with its own hand-rolled deploy workflow would have it replaced.
+        createGemfile:
+          title: This repo has no Gemfile yet
+          type: boolean
+          default: true
+          # Quoted: the `group: :jekyll_plugins` inside would otherwise read as
+          # a nested mapping and fail to parse.
+          description: 'Uncheck if the site already has one. An existing Gemfile is never overwritten — it may pin gems deliberately — so instead add the github-pages gem to it by hand, or let the agent door do it.'
+        createCatalogInfo:
+          title: This repo has no catalog-info.yaml yet
+          type: boolean
+          default: false
+          description: Leave unchecked if the site is already in the catalog — an existing descriptor is never overwritten, and you add the two annotations by hand instead.
+  steps:
+    - id: stubs
+      name: Render the caller stubs
+      if: ${{ parameters.createWorkflows }}
+      action: fetch:template
+      input:
+        url: ./skeleton-workflows
+        values: {}
+
+    - id: gemfile
+      name: Render the Gemfile
+      if: ${{ parameters.createGemfile }}
+      action: fetch:template
+      input:
+        url: ./skeleton-gemfile
+        values: {}
+
+    - id: descriptor
+      name: Render a catalog descriptor
+      if: ${{ parameters.createCatalogInfo }}
+      action: fetch:template
+      input:
+        url: ./skeleton-catalog
+        values:
+          repoName: ${{ (parameters.repoUrl | parseRepoUrl).repo }}
+          owner: ${{ parameters.owner }}
+          # Must equal siliconsaga.org/module-release in this module's
+          # catalog-info.yaml. Bumping one without the other makes every new
+          # adopter record a release that does not exist.
+          moduleRelease: '1.0'
+
+    - id: pr
+      name: Open the adoption pull request
+      action: publish:github:pull-request
+      input:
+        repoUrl: ${{ parameters.repoUrl }}
+        branchName: adopt-website-hygiene
+        title: 'Adopt the website-hygiene aspect'
+        description: |
+          Adopts the shared CI workflows from [volundr](https://github.com/SiliconSaga/volundr).
+
+          - `Gemfile` — the `github-pages` gem, which supplies the `jekyll-sitemap` the visual diff walks
+          - `.github/workflows/deploy.yml` — builds and publishes to `gh-pages`
+          - `.github/workflows/pr-preview.yml` — per-PR preview site, sticky comment, visual diff against main
+
+          **Two steps remain after merging, and no pull request can do either.**
+
+          1. Switch this repository's Pages source to the `gh-pages` branch — see [pages-source](https://github.com/SiliconSaga/volundr/blob/main/aspect/docs/pages-source.md). Until then the deploy has nowhere to publish.
+          2. If this site is not already in the catalog, register it once. The instance reads an explicit list of locations and has no discovery provider, so merging the descriptor alone shows nothing.
+
+          Two assumptions worth checking before merging: the deploy stub triggers on pushes to `main`, so edit that line if this repo's default branch differs; and the stubs follow volundr's `main` rather than a pinned SHA, which is [volundr's recorded trust trade-off](https://github.com/SiliconSaga/volundr#trust-model) — branch protection there in exchange for no per-caller drift.
+
+  output:
+    links:
+      - title: Adoption pull request
+        url: ${{ steps.pr.output.remoteUrl }}
+      - title: What to do next
+        url: https://github.com/SiliconSaga/volundr/blob/main/aspect/docs/pages-source.md

@@ -6,3 +6,9 @@
 *.mjs text eol=lf
 *.py text eol=lf
 *.yml text eol=lf
+# .yaml too, for the same reason one step removed: aspect/ holds catalog
+# entities read over a URL, and aspect/skeleton-*/ holds files rendered
+# verbatim into other people's repos. Neither should carry whatever line
+# ending the machine that last touched them happened to use.
+*.yaml text eol=lf
+

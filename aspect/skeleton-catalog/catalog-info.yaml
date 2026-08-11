@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.repoName }}
+  annotations:
+    siliconsaga.org/aspects: website-hygiene
+    siliconsaga.org/aspect-versions: website-hygiene@${{ values.moduleRelease }}
+spec:
+  type: website
+  lifecycle: production
+  owner: ${{ values.owner }}
