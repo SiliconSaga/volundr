@@ -60,6 +60,11 @@ $line
 EOF_LINE
   if [ -z "${out:-}" ]; then fail "expected 5 columns: html widthxheight scale pdf|png outbase"; fi
   if [ -n "${extra:-}" ]; then fail "unexpected extra column(s): $extra"; fi
+  # outbase is a filename stem, never a path — a separator or dot-segment
+  # could write (and later stage) files outside exports/.
+  case "$out" in
+    .|..|*/*|*\\*) fail "outbase must be a plain filename, not a path: $out" ;;
+  esac
   if [ ! -f "$html" ]; then fail "html file not found: $html"; fi
   w="${size%%x*}"; h="${size##*x}"
   case "$w" in ''|*[!0-9]*) fail "bad widthxheight: $size" ;; esac
