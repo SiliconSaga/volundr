@@ -1,0 +1,48 @@
+# The website-hygiene standard — lives in the ASPECT MODULE beside the paved
+# road it describes and the vísar it references.
+#
+# BLOCKS carry facet applicability; MEDALS are derived, never listed here
+# (leidangr ADR 0013): gold is every APPLICABLE trial passing, silver is one
+# short, bronze is any. Non-applicable trials skip, so they never count
+# against the total.
+#
+# Every trial names an `artifact` — the concrete thing a fact source inspects.
+# Prose rules read fine and compute nothing, which is the trap worth avoiding
+# while the fact source is still unbuilt.
+standard:
+  id: website-hygiene
+  aspect: website-hygiene
+  owner: group:default/team-devex
+  filter: { kind: Component }
+  facetDefaults:
+    website: [web-ui]
+  blocks:
+    - id: build-inputs
+      appliesTo: [web-ui]
+      trials:
+        - id: gemfile-present
+          rule: a Gemfile at the repo root declares the github-pages gem
+          artifact: Gemfile
+          factSource: repo-files
+          remediation: ./docs/adopting.md
+    - id: deploy
+      appliesTo: [web-ui]
+      trials:
+        - id: deploy-stub-points-at-volundr
+          rule: a job in .github/workflows/deploy.yml uses SiliconSaga/volundr/.github/workflows/jekyll-deploy.yml@main
+          artifact: .github/workflows/deploy.yml
+          factSource: repo-files
+          remediation: ./docs/adopting.md
+        - id: pages-source-is-gh-pages
+          rule: the repository's GitHub Pages source branch is gh-pages
+          artifact: github-pages-settings
+          factSource: github-pages-api
+          remediation: ./docs/pages-source.md
+    - id: preview
+      appliesTo: [web-ui]
+      trials:
+        - id: preview-stub-points-at-volundr
+          rule: a job in .github/workflows/pr-preview.yml uses SiliconSaga/volundr/.github/workflows/pr-preview.yml@main
+          artifact: .github/workflows/pr-preview.yml
+          factSource: repo-files
+          remediation: ./docs/adopting.md
