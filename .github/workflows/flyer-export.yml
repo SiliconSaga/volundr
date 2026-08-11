@@ -1,0 +1,78 @@
+name: Flyer export (reusable)
+
+# Regenerates a PR's committed flyer exports (PDF/PNG) from their HTML sources
+# and pushes the result back to the PR branch — so an agent or volunteer with
+# no local browser can complete a flyer change alone. Callers own the
+# pull_request trigger (paths: ['flyers/**']) and grant contents: write.
+# Local regeneration stays first-class: bash flyer-kit/export.sh <campaign-dir>.
+#
+# The push uses the workflow's GITHUB_TOKEN, which GitHub deliberately does not
+# let retrigger workflows: structurally no loop, and no follow-up run either —
+# the PR's other checks reflect the pre-regeneration head. Accepted trade for
+# the no-custom-secrets trust model (see the repo README); the site preview
+# renders flyer HTML, which the regeneration commit never touches.
+on:
+  workflow_call:
+
+# Constrain the token to the one scope the job needs, whatever the caller granted.
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    # Fork PRs carry a read-only GITHUB_TOKEN: skip rather than fail.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      # The flyer tooling lives in this (volundr) repo, not the caller.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: SiliconSaga/volundr
+          path: .volundr
+
+      - name: Regenerate exports for every flyer campaign
+        run: |
+          set -euo pipefail
+          # ubuntu-latest images ship Google Chrome; export.sh discovers it.
+          found=0
+          while IFS= read -r conf; do
+            found=1
+            dir="$(dirname "$conf")"
+            echo "== regenerating $dir"
+            bash .volundr/flyer-kit/export.sh "$dir"
+          done < <(find flyers -name flyers.conf 2>/dev/null || true)
+          if [ "$found" = "0" ]; then echo "No flyers.conf found — nothing to regenerate."; fi
+
+      - name: Commit regenerated exports back to the PR
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- flyers
+          # Chromium stamps per-run metadata into every PDF; a PDF whose only
+          # difference is that metadata is not a real change. Unstage those so
+          # the quiet check below reflects actual content — regeneration of an
+          # unchanged flyer commits nothing.
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if git cat-file -e "HEAD:$f" 2>/dev/null; then
+              git show "HEAD:$f" > /tmp/pdf-same-head.pdf
+              if python3 .volundr/flyer-kit/pdf-same.py /tmp/pdf-same-head.pdf "$f"; then
+                git restore --staged -- "$f"
+                git checkout -- "$f"
+                echo "unchanged (metadata-only): $f"
+              fi
+            fi
+          done < <(git diff --cached --name-only --diff-filter=M -- '*.pdf')
+          if git diff --cached --quiet; then
+            echo "Exports already current."
+            exit 0
+          fi
+          git commit -m "chore: regenerate flyer exports (${GITHUB_SHA::7})"
+          git push origin "HEAD:$HEAD_REF"

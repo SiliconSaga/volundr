@@ -20,6 +20,10 @@ if (!existsSync(sitemapPath)) {
 const xml = await readFile(sitemapPath, 'utf8');
 const routes = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)]
   .map((m) => new URL(m[1]).pathname)
+  // jekyll-sitemap also lists static files (committed PDF/PNG deliverables,
+  // fonts, scripts). Only page-like routes can be screenshotted — a goto()
+  // on a PDF is a download, which kills the whole run.
+  .filter((p) => p.endsWith('/') || p.endsWith('.html') || !extname(p))
   .sort();
 if (routes.length === 0) { console.error('FATAL: sitemap has no <loc> entries.'); process.exit(1); }
 
