@@ -2,7 +2,9 @@
 # Generates a QR code PNG, offline. Usage:
 #   bash make-qr.sh <url> <output.png> [dark] [light] [scale] [border]
 # Defaults: dark #000000, light #FFFFFF, scale 12, border 2.
-# Requires: python -m pip install --user segno
+# Requires Segno, installed with the same interpreter this script selects:
+#   python3 -m pip install --user segno   (or python -m pip ... when only
+#   python is available)
 set -euo pipefail
 URL="${1:?usage: make-qr.sh <url> <output.png> [dark] [light] [scale] [border]}"
 OUT="${2:?usage: make-qr.sh <url> <output.png> [dark] [light] [scale] [border]}"
