@@ -35,7 +35,7 @@ Commands below run from the site repo's root with volundr cloned alongside it (a
 
 1. Seed the fonts once: `bash ../volundr/flyer-kit/install.sh flyers`.
 2. Edit flyer HTML/CSS; regenerate: `bash ../volundr/flyer-kit/export.sh flyers/hockey-2026` (your campaign dir).
-3. QR codes: `bash ../volundr/flyer-kit/make-qr.sh https://example.org/register flyers/assets/qr.png "#071F42" "#FFFFFF"` (offline; needs `python -m pip install --user segno`).
+3. QR codes: `bash ../volundr/flyer-kit/make-qr.sh https://example.org/register flyers/assets/qr.png "#071F42" "#FFFFFF"` (offline after installing Segno with the same interpreter the script selects: `python3 -m pip install --user segno`, or `python -m pip ...` when only `python` is available).
 
 Browser discovery covers Windows/macOS install paths and PATH lookups; set `BROWSER` to override.
 
@@ -58,7 +58,7 @@ jobs:
     uses: SiliconSaga/volundr/.github/workflows/flyer-export.yml@main
 ```
 
-Any PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The push uses the workflow's `GITHUB_TOKEN`; GitHub never runs workflows for such pushes automatically — depending on repo settings the would-be runs are either suppressed outright or created in a held, approval-required state (observed live on mtl-hockey#2: `action_required`). Either way there is structurally no loop and no automatic follow-up run — the PR's other checks reflect the pre-regeneration head, an accepted trade for the no-custom-secrets trust model (the site preview renders flyer HTML, which the regeneration commit never touches; approving a held run is optional). PDFs are compared metadata-insensitively (`pdf-same.py` strips Chromium's per-run CreationDate/ModDate/ID), so regenerating an unchanged flyer commits nothing.
+Any PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The push uses the workflow's `GITHUB_TOKEN`, and GitHub's anti-recursion rules split by event: `push`-triggered workflows are simply never created for such pushes, while the resulting `pull_request` `synchronize` runs are created but held in an approval-required state (`action_required` — observed live on mtl-hockey#2; a write-access user can optionally approve them from the PR's merge box). Either way there is structurally no loop and no automatic follow-up run — the PR's other checks reflect the pre-regeneration head, an accepted trade for the no-custom-secrets trust model (the site preview renders flyer HTML, which the regeneration commit never touches). PDFs are compared metadata-insensitively (`pdf-same.py` strips Chromium's per-run CreationDate/ModDate/ID), so regenerating an unchanged flyer commits nothing.
 
 ## Fonts
 

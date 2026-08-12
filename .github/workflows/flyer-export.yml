@@ -6,13 +6,15 @@ name: Flyer export (reusable)
 # pull_request trigger (paths: ['flyers/**']) and grant contents: write.
 # Local regeneration stays first-class: bash flyer-kit/export.sh <campaign-dir>.
 #
-# The push uses the workflow's GITHUB_TOKEN; GitHub never runs workflows for
-# such pushes automatically (settings-dependent: suppressed outright, or
-# created held as action_required). Structurally no loop, no automatic
-# follow-up run — the PR's other checks reflect the pre-regeneration head.
-# Accepted trade for the no-custom-secrets trust model (see the repo README);
-# the site preview renders flyer HTML, which the regeneration commit never
-# touches, and approving a held run is optional.
+# The push uses the workflow's GITHUB_TOKEN. GitHub's anti-recursion rules
+# split by event: push-triggered workflows are never created for such pushes,
+# while the resulting pull_request synchronize runs are created but held as
+# action_required (approving them from the PR is optional). This file defines
+# only workflow_call — the caller owns the pull_request trigger. Structurally
+# no loop, no automatic follow-up run — the PR's other checks reflect the
+# pre-regeneration head. Accepted trade for the no-custom-secrets trust model
+# (see the repo README); the site preview renders flyer HTML, which the
+# regeneration commit never touches.
 on:
   workflow_call:
 

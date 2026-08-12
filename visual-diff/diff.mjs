@@ -147,9 +147,19 @@ function cropTo(png, box, margin, w, h) {
 
 mkdirSync(pubDir, { recursive: true });
 const changed = [];
-const artifacts = new Map(); // route -> Map(vp -> {marked, before, after, diff} PNG buffers)
+// One include-driven edit (nav, footer, header) changes every page and would
+// flood the comment with a duplicate section per route. Screenshots are
+// deterministic, so an identical change produces byte-identical crops: group
+// routes by a hash over EVERY published artifact (marked, before, after,
+// diff — equal marked crops alone would not prove the exemplar's transition
+// is this route's transition), show one exemplar, and list the rest. Any
+// difference hashes apart and keeps its own section — the fallback is exactly
+// the ungrouped behavior. Buffers are kept only for each group's exemplar,
+// decided as routes stream through, so peak memory is O(groups), not O(routes).
+const groups = []; // {exemplar, others, artifacts: Map(vp -> buffers)}
+const groupByKey = new Map();
 for (const r of common) {
-  let routeChanged = false;
+  const routeArts = new Map(); // vp -> {marked, before, after, diff}
   for (const vp of VIEWPORTS) {
     const bp = join(baseDir, `${san(r)}__${vp}.png`);
     const cp = join(candDir, `${san(r)}__${vp}.png`);
@@ -164,7 +174,6 @@ for (const r of common) {
     const pmOpts = { threshold: PXTHRESH, alpha: DIFF_ALPHA, diffColor: HILITE };
     const n = pixelmatch(A.data, B.data, diff.data, w, h, pmOpts);
     if (n > MINPIX) {
-      routeChanged = true;
       // Crop before/after/diff to a tight box around the change (+ margin) so a
       // one-line edit doesn't post a full-page-tall screenshot. The second pass
       // costs one more comparison, and only on routes that actually changed.
@@ -177,8 +186,7 @@ for (const r of common) {
       // neighbouring line.
       const snapped = snapBox(B, box, w, h, BOX_STROKE);
       const marked = markBox(B, snapped, w, h, BOX_STROKE, HILITE, BOX_STROKE);
-      if (!artifacts.has(r)) artifacts.set(r, new Map());
-      artifacts.get(r).set(vp, {
+      routeArts.set(vp, {
         marked: PNG.sync.write(cropTo(marked, snapped, CROP_MARGIN, w, h)),
         before: PNG.sync.write(cropTo(A, snapped, CROP_MARGIN, w, h)),
         after: PNG.sync.write(cropTo(B, snapped, CROP_MARGIN, w, h)),
@@ -186,31 +194,29 @@ for (const r of common) {
       });
     }
   }
-  if (routeChanged) changed.push(r);
-}
-
-// One include-driven edit (nav, footer, header) changes every page and would
-// flood the comment with a duplicate section per route. Screenshots are
-// deterministic, so an identical change produces byte-identical marked crops:
-// group routes by that, show one exemplar, and list the rest. Any difference
-// (position, content) hashes apart and keeps its own section — the fallback
-// is exactly the ungrouped behavior.
-const groups = [];
-{
-  const byKey = new Map();
-  for (const r of changed) {
-    const h = createHash('sha256');
-    for (const [vp, art] of artifacts.get(r)) { h.update(vp); h.update(art.marked); }
-    const key = h.digest('hex');
-    if (!byKey.has(key)) { byKey.set(key, { exemplar: r, others: [] }); groups.push(byKey.get(key)); }
-    else byKey.get(key).others.push(r);
+  if (routeArts.size === 0) continue;
+  changed.push(r);
+  const keyer = createHash('sha256');
+  for (const [vp, art] of routeArts) {
+    keyer.update(vp);
+    keyer.update(art.marked); keyer.update(art.before);
+    keyer.update(art.after); keyer.update(art.diff);
+  }
+  const key = keyer.digest('hex');
+  const existing = groupByKey.get(key);
+  if (existing) existing.others.push(r); // duplicate: buffers dropped here
+  else {
+    const g = { exemplar: r, others: [], artifacts: routeArts };
+    groupByKey.set(key, g);
+    groups.push(g);
   }
 }
+
 // Only exemplars get published artifacts — grouped duplicates reference them.
 for (const g of groups) {
   const sub = join(pubDir, san(g.exemplar));
   mkdirSync(sub, { recursive: true });
-  for (const [vp, art] of artifacts.get(g.exemplar)) {
+  for (const [vp, art] of g.artifacts) {
     writeFileSync(join(sub, `marked__${vp}.png`), art.marked);
     writeFileSync(join(sub, `before__${vp}.png`), art.before);
     writeFileSync(join(sub, `after__${vp}.png`), art.after);
@@ -246,7 +252,7 @@ for (const g of groups) {
   html += `<h2><span class=tag>${esc(r)}</span>${g.others.length ? ` <small>+ ${g.others.length} more with the identical change</small>` : ''}</h2>`;
   if (g.others.length) html += `<p>Also changed identically: ${g.others.map((x) => `<span class=tag>${esc(x)}</span>`).join(' ')}</p>`;
   for (const vp of VIEWPORTS) {
-    if (!artifacts.get(r).has(vp)) continue;
+    if (!g.artifacts.has(vp)) continue;
     // No pixel-diff panel: the magenta mask tints ADDED glyphs the same as
     // removed ones, which reads as "something was erased" when text appeared.
     // The ringed shot plus before/after carries the story; the raw mask is
@@ -276,7 +282,7 @@ if (!changed.length && !added.length && !removed.length) {
       // Only reference viewport images that were actually emitted (a route can
       // change in one viewport but not the other).
       for (const vp of VIEWPORTS) {
-        if (!artifacts.get(r).has(vp)) continue;
+        if (!g.artifacts.has(vp)) continue;
         // Lead with the page itself, ringed. The pixel mask answers "which
         // pixels" — a question nobody reviewing a campaign site is asking — so it
         // stays one click away rather than being the first thing they see.
