@@ -133,6 +133,33 @@ function markBox(src, box, w, h, stroke, [r, g, b], pad) {
   return out;
 }
 
+// The hero image a reviewer sees inline: before and after side by side
+// (stacked when the crop is wide), with the ring already burned into the
+// after pane. A ringed after image alone says WHERE something changed but not
+// WHAT — for a text swap the old-vs-new adjacency IS the story (owner
+// feedback on mtl-hockey#3, where the before/after links carried more
+// information than the posted image).
+const PANE_GAP = 6;               // divider between the panes
+const PANE_GAP_RGB = [60, 60, 60];
+const HERO_STACK_OVER = 620;      // crops wider than this stack vertically
+
+function compositePanes(before, after) {
+  const { width: w, height: h } = before;
+  const horizontal = w <= HERO_STACK_OVER;
+  const W = horizontal ? w * 2 + PANE_GAP : w;
+  const H = horizontal ? h : h * 2 + PANE_GAP;
+  const out = new PNG({ width: W, height: H });
+  for (let p = 0; p < W * H; p++) {
+    const i = p * 4;
+    out.data[i] = PANE_GAP_RGB[0]; out.data[i + 1] = PANE_GAP_RGB[1];
+    out.data[i + 2] = PANE_GAP_RGB[2]; out.data[i + 3] = 255;
+  }
+  PNG.bitblt(before, out, 0, 0, w, h, 0, 0);
+  if (horizontal) PNG.bitblt(after, out, 0, 0, w, h, w + PANE_GAP, 0);
+  else PNG.bitblt(after, out, 0, 0, w, h, 0, h + PANE_GAP);
+  return out;
+}
+
 // Crop a PNG to the box + margin (clamped). Full image back if box is null.
 function cropTo(png, box, margin, w, h) {
   if (!box) return png;
@@ -186,11 +213,15 @@ for (const r of common) {
       // neighbouring line.
       const snapped = snapBox(B, box, w, h, BOX_STROKE);
       const marked = markBox(B, snapped, w, h, BOX_STROKE, HILITE, BOX_STROKE);
+      const beforeCrop = cropTo(A, snapped, CROP_MARGIN, w, h);
+      const markedCrop = cropTo(marked, snapped, CROP_MARGIN, w, h);
       routeArts.set(vp, {
-        marked: PNG.sync.write(cropTo(marked, snapped, CROP_MARGIN, w, h)),
-        before: PNG.sync.write(cropTo(A, snapped, CROP_MARGIN, w, h)),
+        hero: PNG.sync.write(compositePanes(beforeCrop, markedCrop)),
+        marked: PNG.sync.write(markedCrop),
+        before: PNG.sync.write(beforeCrop),
         after: PNG.sync.write(cropTo(B, snapped, CROP_MARGIN, w, h)),
         diff: PNG.sync.write(cropTo(diff, snapped, CROP_MARGIN, w, h)),
+        changedPx: n,
       });
     }
   }
@@ -217,6 +248,7 @@ for (const g of groups) {
   const sub = join(pubDir, san(g.exemplar));
   mkdirSync(sub, { recursive: true });
   for (const [vp, art] of g.artifacts) {
+    writeFileSync(join(sub, `hero__${vp}.png`), art.hero);
     writeFileSync(join(sub, `marked__${vp}.png`), art.marked);
     writeFileSync(join(sub, `before__${vp}.png`), art.before);
     writeFileSync(join(sub, `after__${vp}.png`), art.after);
@@ -243,7 +275,7 @@ writeFileSync(join(pubDir, 'summary.json'), JSON.stringify({
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 let html = `<!doctype html><meta charset=utf8><title>Visual diff PR</title>`
   + `<style>body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem}`
-  + `img{max-width:100%;border:1px solid #ccc}h2{margin-top:2.5rem}.grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}`
+  + `img{max-width:100%;border:1px solid #ccc}h2{margin-top:2.5rem}`
   + `.tag{font:12px monospace;background:#eee;padding:.1rem .4rem;border-radius:3px}</style>`;
 html += `<h1>Visual diff</h1><p>${changed.length} changed &middot; ${added.length} new &middot; ${removed.length} removed`
   + ` &middot; ${common.length} routes compared.</p>`;
@@ -253,15 +285,10 @@ for (const g of groups) {
   if (g.others.length) html += `<p>Also changed identically: ${g.others.map((x) => `<span class=tag>${esc(x)}</span>`).join(' ')}</p>`;
   for (const vp of VIEWPORTS) {
     if (!g.artifacts.has(vp)) continue;
-    // No pixel-diff panel: the magenta mask tints ADDED glyphs the same as
-    // removed ones, which reads as "something was erased" when text appeared.
-    // The ringed shot plus before/after carries the story; the raw mask is
-    // still written next to these files for debugging, just not surfaced.
+    // The hero already IS before|after (ring on the after pane); the raw
+    // pixel mask stays a debugging artifact, written but not surfaced.
     html += `<h3>${vp}</h3>`
-      + `<figure><figcaption>what changed</figcaption><img src="${san(r)}/marked__${vp}.png"></figure>`
-      + `<div class=grid>`
-      + `<figure><figcaption>before</figcaption><img src="${san(r)}/before__${vp}.png"></figure>`
-      + `<figure><figcaption>after</figcaption><img src="${san(r)}/after__${vp}.png"></figure></div>`;
+      + `<figure><figcaption>before | after (change ringed)</figcaption><img src="${san(r)}/hero__${vp}.png"></figure>`;
   }
 }
 if (added.length) html += `<h2>New pages</h2><ul>${added.map((r) => `<li><span class=tag>${esc(r)}</span> `
@@ -279,16 +306,23 @@ if (!changed.length && !added.length && !removed.length) {
     for (const g of groups) {
       const r = g.exemplar;
       md += `#### \`${r}\`${g.others.length ? ` — and ${g.others.length} more page${g.others.length === 1 ? '' : 's'} with the identical change` : ''}\n\n`;
-      // Only reference viewport images that were actually emitted (a route can
-      // change in one viewport but not the other).
+      // One inline hero per section: the viewport with the larger changed
+      // area leads with its before|after composite; the other viewport rarely
+      // tells a different story, so it stays one click away as links instead
+      // of doubling the images (owner feedback on mtl-hockey#3).
+      const vps = [...g.artifacts.keys()];
+      const primary = vps.reduce((best, vp) => (
+        g.artifacts.get(vp).changedPx > g.artifacts.get(best).changedPx ? vp : best
+      ), vps[0]);
+      md += `**${primary}** — before | after (change ringed):\n\n`
+        + `![before and after](${previewUrl}${san(r)}/hero__${primary}.png)\n\n`
+        + `[before](${previewUrl}${san(r)}/before__${primary}.png) &middot; `
+        + `[after](${previewUrl}${san(r)}/after__${primary}.png) full size\n\n`;
       for (const vp of VIEWPORTS) {
-        if (!g.artifacts.has(vp)) continue;
-        // Lead with the page itself, ringed. The pixel mask answers "which
-        // pixels" — a question nobody reviewing a campaign site is asking — so it
-        // stays one click away rather than being the first thing they see.
-        md += `**${vp}** — ![what changed](${previewUrl}${san(r)}/marked__${vp}.png)\n\n`
-          + `[before](${previewUrl}${san(r)}/before__${vp}.png) &middot; `
-          + `[after](${previewUrl}${san(r)}/after__${vp}.png)\n\n`;
+        if (vp === primary || !g.artifacts.has(vp)) continue;
+        md += `**${vp}:** [before](${previewUrl}${san(r)}/before__${vp}.png) &middot; `
+          + `[after](${previewUrl}${san(r)}/after__${vp}.png) &middot; `
+          + `[side by side](${previewUrl}${san(r)}/hero__${vp}.png)\n\n`;
       }
       if (g.others.length) md += `_Also changed identically:_ ${g.others.map((x) => `\`${x}\``).join(', ')}\n\n`;
     }
