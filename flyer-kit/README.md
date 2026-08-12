@@ -31,9 +31,11 @@ instagram.html       1080x1350     1      png      my-flyer-instagram
 
 ## Local use (no GitHub needed)
 
-1. Clone volundr next to your site (or set its path once): `bash <volundr>/flyer-kit/install.sh <site>/flyers` seeds the fonts.
-2. Edit flyer HTML/CSS; regenerate: `bash <volundr>/flyer-kit/export.sh <site>/flyers/<campaign>`.
-3. QR codes: `bash <volundr>/flyer-kit/make-qr.sh <url> <site>/flyers/assets/qr.png "#071F42" "#FFFFFF"` (offline; needs `python -m pip install --user segno`).
+Commands below run from the site repo's root with volundr cloned alongside it (adjust `../volundr` if yours lives elsewhere — angle-bracket placeholders would be parsed by bash as redirections, so these are real runnable commands):
+
+1. Seed the fonts once: `bash ../volundr/flyer-kit/install.sh flyers`.
+2. Edit flyer HTML/CSS; regenerate: `bash ../volundr/flyer-kit/export.sh flyers/hockey-2026` (your campaign dir).
+3. QR codes: `bash ../volundr/flyer-kit/make-qr.sh https://example.org/register flyers/assets/qr.png "#071F42" "#FFFFFF"` (offline after installing Segno with the same interpreter the script selects: `python3 -m pip install --user segno`, or `python -m pip ...` when only `python` is available).
 
 Browser discovery covers Windows/macOS install paths and PATH lookups; set `BROWSER` to override.
 
@@ -56,7 +58,7 @@ jobs:
     uses: SiliconSaga/volundr/.github/workflows/flyer-export.yml@main
 ```
 
-Any PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The push uses the workflow's `GITHUB_TOKEN`, which GitHub deliberately does not let retrigger workflows: structurally no loop, and no follow-up run either — the PR's other checks reflect the pre-regeneration head, an accepted trade for the no-custom-secrets trust model (the site preview renders flyer HTML, which the regeneration commit never touches). PDFs are compared metadata-insensitively (`pdf-same.py` strips Chromium's per-run CreationDate/ModDate/ID), so regenerating an unchanged flyer commits nothing.
+Any non-fork PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The push uses the workflow's `GITHUB_TOKEN`, and GitHub's anti-recursion rules split by event: `push`-triggered workflows are simply never created for such pushes, while the resulting `pull_request` `synchronize` runs are created but held in an approval-required state (`action_required` — observed live on mtl-hockey#2; a write-access user can optionally approve them from the PR's merge box). Either way there is structurally no loop and no automatic follow-up run — the PR's other checks reflect the pre-regeneration head, an accepted trade for the no-custom-secrets trust model (the site preview renders flyer HTML, which the regeneration commit never touches). PDFs are compared metadata-insensitively (`pdf-same.py` strips Chromium's per-run CreationDate/ModDate/ID), so regenerating an unchanged flyer commits nothing.
 
 ## Fonts
 
