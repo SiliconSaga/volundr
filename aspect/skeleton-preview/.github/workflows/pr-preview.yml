@@ -1,0 +1,17 @@
+name: PR preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: gh-pages-write
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    uses: SiliconSaga/volundr/.github/workflows/pr-preview.yml@main

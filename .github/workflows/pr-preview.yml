@@ -59,8 +59,21 @@ jobs:
           fi
           git config --global user.name  "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin gh-pages:refs/remotes/origin/gh-pages
-          git worktree add -B gh-pages ../ghp origin/gh-pages
+          # Attach a worktree to gh-pages, creating the branch on first run —
+          # the same shape jekyll-deploy uses. A repo adopting these workflows
+          # has no gh-pages until its first deploy runs after merge, so the very
+          # pull request that adds this caller would otherwise die here, on an
+          # unguarded fetch, before anything could create the branch.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages
+            git worktree add -B gh-pages ../ghp origin/gh-pages
+          else
+            echo "gh-pages does not exist yet — creating it."
+            git worktree add --detach ../ghp
+            git -C ../ghp checkout --orphan gh-pages
+            git -C ../ghp rm -rf --cached . >/dev/null 2>&1 || true
+            find ../ghp -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          fi
           rm -rf "../ghp/pr-preview/pr-${PR}"
           mkdir -p "../ghp/pr-preview/pr-${PR}"
           cp -r _site/. "../ghp/pr-preview/pr-${PR}/"
@@ -106,13 +119,30 @@ jobs:
       PR: ${{ github.event.number }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      # A PR can be closed before any deploy has created gh-pages — closing the
+      # very pull request that adopts these workflows does exactly that. There
+      # is then no branch to check out and nothing to clean, so establish which
+      # it is before trying.
+      - name: Does gh-pages exist yet
+        id: ghp
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/branches/gh-pages" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "gh-pages does not exist — no preview can have been published."
+          fi
+
       # Check out gh-pages directly. A closed PR's merge ref may no longer
       # exist, so a default checkout can fail — and this job needs no PR code.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        if: steps.ghp.outputs.exists == 'true'
         with:
           ref: gh-pages
 
       - name: Remove the preview
+        if: steps.ghp.outputs.exists == 'true'
         run: |
           set -euo pipefail
           git config --global user.name  "github-actions[bot]"
@@ -244,8 +274,21 @@ jobs:
           fi
           git config --global user.name  "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin gh-pages:refs/remotes/origin/gh-pages
-          git worktree add -B gh-pages ../ghp origin/gh-pages
+          # Attach a worktree to gh-pages, creating the branch on first run —
+          # the same shape jekyll-deploy uses. A repo adopting these workflows
+          # has no gh-pages until its first deploy runs after merge, so the very
+          # pull request that adds this caller would otherwise die here, on an
+          # unguarded fetch, before anything could create the branch.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages
+            git worktree add -B gh-pages ../ghp origin/gh-pages
+          else
+            echo "gh-pages does not exist yet — creating it."
+            git worktree add --detach ../ghp
+            git -C ../ghp checkout --orphan gh-pages
+            git -C ../ghp rm -rf --cached . >/dev/null 2>&1 || true
+            find ../ghp -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          fi
           rm -rf "../ghp/pr-preview/pr-${PR}/_diff"
           mkdir -p "../ghp/pr-preview/pr-${PR}/_diff"
           cp -r _diff/. "../ghp/pr-preview/pr-${PR}/_diff/"

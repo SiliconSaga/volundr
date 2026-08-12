@@ -1,0 +1,47 @@
+# The practice's catalog face. The Component is the PRACTICE (the living
+# institution); this directory is its ASPECT (the module that gets applied),
+# and the workflows one level up are the paved road the module describes.
+#
+# The module lives inside volundr on purpose: a workflow change and the change
+# to the trial describing it land in the same reviewed pull request, so the
+# standard cannot drift from what is next door. See the leidangr design doc
+# docs/plans/2026-08-11-website-hygiene-aspect-design.md.
+#
+# No spec.system, unlike the seeded security-practice: a practice is a living
+# institution, not a part of a software system.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: website-hygiene-practice
+  title: Website hygiene practice
+  description: 'The Website hygiene practice: its aspect module — standard, paved-road workflows, adoption doors, and remediation vísar'
+  annotations:
+    siliconsaga.org/aspect: 'website-hygiene'
+    # THE release number for this module. A hand-maintained compatibility
+    # marker, NOT a git tag — nothing creates one, and the catalog locations
+    # and caller stubs both read @main. Bump it when a trial is added or a
+    # workflow contract changes; adopters recording an older value then read as
+    # `behind` until they re-adopt, which is the whole point of recording it.
+    #
+    # Two other places repeat it and must move together — there is no way to
+    # make a scaffolder template read this file, so the coupling is managed by
+    # saying so rather than by hoping:
+    #   1. aspect/template.yaml  → steps.descriptor.input.values.moduleRelease
+    #   2. leidangr scripts/smoke-catalog.sh → the module-release assertion
+    # The smoke assertion is deliberately exact rather than a presence check:
+    # it is the thing that fails loudly when only one of the three was bumped.
+    siliconsaga.org/module-release: '1.0'
+    siliconsaga.org/visir: './docs/pages-source.md'
+    backstage.io/techdocs-ref: dir:.
+  links:
+    - url: https://github.com/SiliconSaga/volundr/blob/main/aspect/standard.yaml
+      title: The standard — blocks of trials, medals derived from what passes
+    - url: https://github.com/SiliconSaga/volundr/blob/main/.github/workflows/jekyll-deploy.yml
+      title: Paved road — reusable Jekyll deploy workflow
+    - url: https://github.com/SiliconSaga/volundr/blob/main/.github/workflows/pr-preview.yml
+      title: Paved road — reusable PR preview and visual diff workflow
+    - url: https://github.com/SiliconSaga/volundr/blob/main/aspect/template.yaml
+      title: Adoption (Create-page door) — Apply the Website hygiene aspect
+    - url: https://github.com/SiliconSaga/volundr/blob/main/aspect/SKILL.md
+      title: Adoption (agent door) — SKILL.md
+spec: { type: practice, lifecycle: production, owner: group:default/team-devex }

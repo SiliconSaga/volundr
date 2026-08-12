@@ -1,0 +1,17 @@
+name: Deploy site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages-write
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: SiliconSaga/volundr/.github/workflows/jekyll-deploy.yml@main
