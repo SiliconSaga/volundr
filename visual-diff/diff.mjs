@@ -212,6 +212,16 @@ for (const r of common) {
       // nor (seams between text lines run ~10px at default line-height) the
       // neighbouring line.
       const snapped = snapBox(B, box, w, h, BOX_STROKE);
+      // A shorter after-page is padded with background below its real content,
+      // and every row of that tail "differs" from the before content — which
+      // would drag the ring and the crop down across a void (owner feedback on
+      // mtl-hockey#4's register hero). Clamp to the after page's real content;
+      // the panes' differing lengths already tell the page-got-shorter story.
+      // When the after page is the taller one, the tail is genuinely new
+      // content and stays ringed.
+      if (snapped.minY < b.height && snapped.maxY >= b.height) {
+        snapped.maxY = b.height - 1;
+      }
       const marked = markBox(B, snapped, w, h, BOX_STROKE, HILITE, BOX_STROKE);
       const beforeCrop = cropTo(A, snapped, CROP_MARGIN, w, h);
       const markedCrop = cropTo(marked, snapped, CROP_MARGIN, w, h);
@@ -323,7 +333,7 @@ if (!changed.length && !added.length && !removed.length) {
         if (vp === primary || !g.artifacts.has(vp)) continue;
         md += `**${vp}:** [before](${previewUrl}${san(r)}/before__${vp}.png) &middot; `
           + `[after](${previewUrl}${san(r)}/after__${vp}.png) &middot; `
-          + `[side by side](${previewUrl}${san(r)}/hero__${vp}.png)\n\n`;
+          + `[before + after](${previewUrl}${san(r)}/hero__${vp}.png)\n\n`;
       }
       if (g.others.length) md += `_Also changed identically:_ ${g.others.map((x) => `\`${x}\``).join(', ')}\n\n`;
     }
