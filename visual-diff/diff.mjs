@@ -288,8 +288,8 @@ for (const g of groups) {
     // The hero already IS before|after (ring on the after pane); the raw
     // pixel mask stays a debugging artifact, written but not surfaced.
     html += `<h3>${vp}</h3>`
-      + `<figure><figcaption>before | after (change ringed)</figcaption>`
-      + `<img src="${san(r)}/hero__${vp}.png" alt="${esc(r)} at ${vp}: before and after side by side; changes are ringed in the after pane"></figure>`;
+      + `<figure><figcaption>before and after</figcaption>`
+      + `<img src="${san(r)}/hero__${vp}.png" alt="${esc(r)} at ${vp}: before and after; changed pixels are marked in the after pane when present"></figure>`;
   }
 }
 if (added.length) html += `<h2>New pages</h2><ul>${added.map((r) => `<li><span class=tag>${esc(r)}</span> `
@@ -315,8 +315,8 @@ if (!changed.length && !added.length && !removed.length) {
       const primary = vps.reduce((best, vp) => (
         g.artifacts.get(vp).changedPx > g.artifacts.get(best).changedPx ? vp : best
       ), vps[0]);
-      md += `**${primary}** — before | after (change ringed):\n\n`
-        + `![${r} at ${primary}: before and after side by side; changes are ringed in the after pane](${previewUrl}${san(r)}/hero__${primary}.png)\n\n`
+      md += `**${primary}** — before and after:\n\n`
+        + `![${r} at ${primary}: before and after; changed pixels are marked in the after pane when present](${previewUrl}${san(r)}/hero__${primary}.png)\n\n`
         + `[before](${previewUrl}${san(r)}/before__${primary}.png) &middot; `
         + `[after](${previewUrl}${san(r)}/after__${primary}.png) full size\n\n`;
       for (const vp of VIEWPORTS) {
