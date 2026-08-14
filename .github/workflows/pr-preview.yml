@@ -28,15 +28,25 @@ jobs:
           echo "state=$STATE" >> "$GITHUB_OUTPUT"
           [ "$STATE" = "open" ] || echo "PR #${PR} is $STATE at job start — skipping build."
 
-      - name: Derive repo coordinates
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # Runs after checkout so it can read the caller's CNAME: a site served on
+      # a custom domain lives at the domain root, so its previews live at
+      # /pr-preview/pr-N without the repo-name segment github.io serving needs.
+      - name: Derive site coordinates
         id: coords
         run: |
           set -euo pipefail
-          echo "repo=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+          REPO="${GITHUB_REPOSITORY#*/}"
           OWNER="${GITHUB_REPOSITORY%%/*}"
-          echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+          if [ -f CNAME ]; then
+            DOMAIN="$(tr -d '[:space:]' < CNAME)"
+            echo "site=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
+            echo "prefix=" >> "$GITHUB_OUTPUT"
+          else
+            echo "site=https://${OWNER,,}.github.io/${REPO}" >> "$GITHUB_OUTPUT"
+            echo "prefix=/${REPO}" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1
         with:
@@ -45,7 +55,7 @@ jobs:
 
       - name: Build with the preview baseurl
         if: steps.state.outputs.state == 'open'
-        run: bundle exec jekyll build --baseurl "/${{ steps.coords.outputs.repo }}/pr-preview/pr-${PR}"
+        run: bundle exec jekyll build --baseurl "${{ steps.coords.outputs.prefix }}/pr-preview/pr-${PR}"
 
       - name: Publish the preview
         if: steps.state.outputs.state == 'open'
@@ -97,7 +107,7 @@ jobs:
             echo "PR #${PR} is no longer open — skipping comment."
             exit 0
           fi
-          URL="https://${{ steps.coords.outputs.owner }}.github.io/${{ steps.coords.outputs.repo }}/pr-preview/pr-${PR}/"
+          URL="${{ steps.coords.outputs.site }}/pr-preview/pr-${PR}/"
           BODY="<!-- pr-preview -->
           ### 🔎 Preview this change
 
@@ -191,15 +201,22 @@ jobs:
           echo "state=$STATE" >> "$GITHUB_OUTPUT"
           [ "$STATE" = "open" ] || echo "PR #${PR} is $STATE at job start — skipping diff."
 
-      - name: Derive repo coordinates
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # After checkout for the same reason as the preview job: the caller's
+      # CNAME decides whether preview URLs carry the repo-name segment.
+      - name: Derive site coordinates
         id: coords
         run: |
           set -euo pipefail
-          echo "repo=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+          REPO="${GITHUB_REPOSITORY#*/}"
           OWNER="${GITHUB_REPOSITORY%%/*}"
-          echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+          if [ -f CNAME ]; then
+            DOMAIN="$(tr -d '[:space:]' < CNAME)"
+            echo "site=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
+          else
+            echo "site=https://${OWNER,,}.github.io/${REPO}" >> "$GITHUB_OUTPUT"
+          fi
 
       # The diff tooling lives in this (volundr) repo, not the caller.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -263,7 +280,7 @@ jobs:
           set -euo pipefail
           node .volundr/visual-diff/diff.mjs \
             .volundr/visual-diff/shots/main .volundr/visual-diff/shots/pr \
-            _diff "https://${{ steps.coords.outputs.owner }}.github.io/${{ steps.coords.outputs.repo }}/pr-preview/pr-${PR}/_diff/"
+            _diff "${{ steps.coords.outputs.site }}/pr-preview/pr-${PR}/_diff/"
 
       - name: Publish _diff/ into the preview
         if: steps.state.outputs.state == 'open'
