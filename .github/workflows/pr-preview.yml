@@ -33,14 +33,24 @@ jobs:
       # Runs after checkout so it can read the caller's CNAME: a site served on
       # a custom domain lives at the domain root, so its previews live at
       # /pr-preview/pr-N without the repo-name segment github.io serving needs.
+      # CNAME is PR-controlled content: accept only a regular file whose first
+      # line is a plain domain, and fail loudly on anything else so it can
+      # never reach shell source or smuggle extra lines into GITHUB_OUTPUT.
       - name: Derive site coordinates
         id: coords
         run: |
           set -euo pipefail
           REPO="${GITHUB_REPOSITORY#*/}"
           OWNER="${GITHUB_REPOSITORY%%/*}"
-          if [ -f CNAME ]; then
-            DOMAIN="$(tr -d '[:space:]' < CNAME)"
+          if [ -L CNAME ]; then
+            echo "CNAME must be a regular file, not a symlink." >&2
+            exit 1
+          elif [ -f CNAME ]; then
+            DOMAIN="$(head -n1 CNAME | tr -d '[:space:]')"
+            if ! printf '%s' "$DOMAIN" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$'; then
+              echo "CNAME's first line is not a plain domain — refusing to use it." >&2
+              exit 1
+            fi
             echo "site=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
             echo "prefix=" >> "$GITHUB_OUTPUT"
           else
@@ -55,7 +65,9 @@ jobs:
 
       - name: Build with the preview baseurl
         if: steps.state.outputs.state == 'open'
-        run: bundle exec jekyll build --baseurl "${{ steps.coords.outputs.prefix }}/pr-preview/pr-${PR}"
+        env:
+          PREFIX: ${{ steps.coords.outputs.prefix }}
+        run: bundle exec jekyll build --baseurl "${PREFIX}/pr-preview/pr-${PR}"
 
       - name: Publish the preview
         if: steps.state.outputs.state == 'open'
@@ -99,6 +111,8 @@ jobs:
 
       - name: Upsert the sticky comment
         if: steps.state.outputs.state == 'open'
+        env:
+          SITE: ${{ steps.coords.outputs.site }}
         run: |
           set -euo pipefail
           # Fresh re-check right before the side effect: don't post a preview
@@ -107,7 +121,7 @@ jobs:
             echo "PR #${PR} is no longer open — skipping comment."
             exit 0
           fi
-          URL="${{ steps.coords.outputs.site }}/pr-preview/pr-${PR}/"
+          URL="${SITE}/pr-preview/pr-${PR}/"
           BODY="<!-- pr-preview -->
           ### 🔎 Preview this change
 
@@ -204,15 +218,23 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       # After checkout for the same reason as the preview job: the caller's
-      # CNAME decides whether preview URLs carry the repo-name segment.
+      # CNAME decides whether preview URLs carry the repo-name segment. Same
+      # validation as the preview job — CNAME is PR-controlled content.
       - name: Derive site coordinates
         id: coords
         run: |
           set -euo pipefail
           REPO="${GITHUB_REPOSITORY#*/}"
           OWNER="${GITHUB_REPOSITORY%%/*}"
-          if [ -f CNAME ]; then
-            DOMAIN="$(tr -d '[:space:]' < CNAME)"
+          if [ -L CNAME ]; then
+            echo "CNAME must be a regular file, not a symlink." >&2
+            exit 1
+          elif [ -f CNAME ]; then
+            DOMAIN="$(head -n1 CNAME | tr -d '[:space:]')"
+            if ! printf '%s' "$DOMAIN" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$'; then
+              echo "CNAME's first line is not a plain domain — refusing to use it." >&2
+              exit 1
+            fi
             echo "site=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
           else
             echo "site=https://${OWNER,,}.github.io/${REPO}" >> "$GITHUB_OUTPUT"
@@ -276,11 +298,13 @@ jobs:
 
       - name: Compute the diff
         if: steps.state.outputs.state == 'open'
+        env:
+          SITE: ${{ steps.coords.outputs.site }}
         run: |
           set -euo pipefail
           node .volundr/visual-diff/diff.mjs \
             .volundr/visual-diff/shots/main .volundr/visual-diff/shots/pr \
-            _diff "${{ steps.coords.outputs.site }}/pr-preview/pr-${PR}/_diff/"
+            _diff "${SITE}/pr-preview/pr-${PR}/_diff/"
 
       - name: Publish _diff/ into the preview
         if: steps.state.outputs.state == 'open'
