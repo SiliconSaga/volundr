@@ -124,7 +124,9 @@ spec:
       input:
         url: ./skeleton-catalog
         values:
-          repoName: ${{ (parameters.repoUrl | parseRepoUrl).repo }}
+          # Trimmed for the same reason the pull-request step trims: a pasted
+          # space would otherwise become the catalog entity's name.
+          repoName: ${{ (parameters.repoUrl | parseRepoUrl).repo | trim }}
           owner: ${{ parameters.owner }}
           # Must equal siliconsaga.org/module-release in this module's
           # catalog-info.yaml. Bumping one without the other makes every new
@@ -135,24 +137,40 @@ spec:
     # repository the token cannot see with 404 rather than 403, so a wrong
     # owner and a missing permission produce the same bare "Not Found" — and
     # the step that reports it does not say which coordinates it tried.
+    #
+    # Values are printed IN QUOTES on purpose. What actually broke a real run
+    # was a repository name pasted with a leading space, which is invisible in
+    # the form, invisible in an unquoted log line, and produces that same
+    # unhelpful 404. Quoting is what makes it visible.
     - id: coordinates
       name: Show the target coordinates
       action: debug:log
       input:
         message: |
           Opening a pull request against:
-            host  ${{ (parameters.repoUrl | parseRepoUrl).host }}
-            owner ${{ (parameters.repoUrl | parseRepoUrl).owner }}
-            repo  ${{ (parameters.repoUrl | parseRepoUrl).repo }}
-          If the next step fails with "Not Found", check these three first —
-          GitHub returns 404 for a repository the token cannot see, so that
-          error means these coordinates at least as often as it means access.
+            host  "${{ (parameters.repoUrl | parseRepoUrl).host }}"
+            owner "${{ (parameters.repoUrl | parseRepoUrl).owner | trim }}"
+            repo  "${{ (parameters.repoUrl | parseRepoUrl).repo | trim }}"
+          As entered, before trimming:
+            owner "${{ (parameters.repoUrl | parseRepoUrl).owner }}"
+            repo  "${{ (parameters.repoUrl | parseRepoUrl).repo }}"
+          If those two blocks differ, surrounding whitespace was removed for
+          you. If the next step still fails with "Not Found", check the
+          coordinates before checking permissions — GitHub returns 404 for a
+          repository the token cannot see, so that error means the wrong name
+          at least as often as it means the wrong access.
 
     - id: pr
       name: Open the adoption pull request
       action: publish:github:pull-request
       input:
-        repoUrl: ${{ parameters.repoUrl }}
+        # Rebuilt from trimmed parts rather than passed through. A repo name
+        # pasted with a leading space reaches here intact and fails as a bare
+        # 404, so whitespace is stripped where the value is consumed. Trimming
+        # is a safe correction: no GitHub owner or repository name can begin or
+        # end with a space, so there is no input this could silently change
+        # into a different valid target.
+        repoUrl: ${{ (parameters.repoUrl | parseRepoUrl).host }}?owner=${{ (parameters.repoUrl | parseRepoUrl).owner | trim }}&repo=${{ (parameters.repoUrl | parseRepoUrl).repo | trim }}
         branchName: adopt-website-hygiene
         title: 'Adopt the website-hygiene aspect'
         description: |
