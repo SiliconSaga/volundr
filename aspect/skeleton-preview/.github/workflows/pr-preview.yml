@@ -14,4 +14,11 @@ concurrency:
 
 jobs:
   preview:
+    # Deliberately unpinned, and the reason travels with the file so nobody has
+    # to rediscover it. volundr is first-party — same org, branch-protected
+    # main, human merge as the publish gate — and every genuine third-party
+    # action inside it IS pinned to a SHA. Pinning this reference per caller
+    # would reinstate exactly the copy drift the shared repo exists to remove:
+    # a pull request in every site for every volundr change.
+    # zizmor: ignore[unpinned-uses]
     uses: SiliconSaga/volundr/.github/workflows/pr-preview.yml@main
