@@ -27,7 +27,9 @@ Leave it here. No Gemfile, no workflows, Pages on `main`: all four trials failin
 
 ## 2. Run the adoption
 
-In Backstage: **Create → Apply the Website hygiene aspect**. Give it the repository and an owning group, and leave all three "this repo has no X yet" boxes ticked — for a fresh scaffold none of those files exist.
+In Backstage: **Create → Apply the Website hygiene aspect**. Pick the repository and a catalog owner, and leave all three "this repo has no X yet" boxes ticked — for a fresh scaffold none of those files exist.
+
+The form has two fields that both sound like owners, so they are labelled to keep them apart. The **Site repository** picker wants the GitHub org and repo; its owner box is a dropdown restricted to orgs this aspect targets. The **Catalog owner** field is a Backstage group and has nothing to do with GitHub. If your target lives somewhere the dropdown does not offer — a personal account, say — use the agent door instead, which works on any repository and needs no Backstage.
 
 The scaffolder needs a GitHub credential to open the pull request. Signing in as guest is fine; the write goes through the instance's GitHub integration, not through your session. If the run dies at the last step with *"No token available for host: github.com"*, that credential is missing or misnamed — every render step will have gone green first, because reading needs no token and writing does.
 
