@@ -37,19 +37,20 @@ You should get a pull request with four files: the `Gemfile`, both caller stubs,
 
 **Its own CI should pass.** That is worth watching rather than assuming: the pull request adds the preview workflow, so the preview runs against a repository that has no `gh-pages` branch yet. It is meant to create the branch rather than fail on it.
 
-## 3. Merge, then do the three things a pull request cannot
-
-In this order, because each depends on the last:
+## 3. Merge, then do the one thing a pull request cannot
 
 1. **Merge**, and let the deploy finish. It creates `gh-pages`.
 2. **Switch the Pages source** to `gh-pages` — see [Pages source](pages-source.md). GitHub will not accept that branch before it exists, which is why this is not step 1.
-3. **Register the repository** with the catalog, once, through **Register an existing component** on the Create page. The instance reads an explicit list of locations and watches no org, so a merged descriptor on its own shows nothing.
+
+Registration is not on that list any more. The adoption run registers the location before the descriptor exists, and the catalog retries until the merge makes it readable — so the entity turns up by itself. Between the run and the merge you will see a read error against that location, which is the retry doing its job rather than a fault.
 
 ## 4. Check it worked
 
 The component page should show the aspect enrolled at the module's current release. Open a second pull request against the site — any edit to `index.md` — and it should get a preview comment with a link and a visual diff against `main`.
 
-At that point three of the four trials pass and the site sits at silver, held short by whichever one you skipped. Do them all and it is gold. Skipping step 3 is the one that looks like a failure and is not: everything is correct, nothing is visible, because nothing told the catalog the repository exists.
+At that point three of the four trials pass and the site sits at silver, held short by the Pages source until you switch it. Do that too and it is gold.
+
+If the component never appears at all, look at the registered location rather than at the files. That is the failure that looks like nothing happening: the descriptor can be perfectly correct and still invisible, because the catalog was never told the repository exists or is still retrying a location it cannot yet read.
 
 ## Cleaning up
 
