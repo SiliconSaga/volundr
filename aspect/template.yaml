@@ -185,11 +185,34 @@ spec:
           1. **Merge, and let the deploy run.** It creates the `gh-pages` branch. Nothing below works until that branch exists.
           2. **Switch the Pages source** to `gh-pages` — see [pages-source](https://github.com/SiliconSaga/volundr/blob/main/aspect/docs/pages-source.md). GitHub will not accept a branch that does not exist yet, which is why this comes after step 1 rather than before it.
           3. **If you left "no catalog-info.yaml yet" unchecked**, this pull request did not add the enrollment annotations, because it will not overwrite a descriptor it did not write. Add them to your existing `catalog-info.yaml` by hand: `siliconsaga.org/aspects: website-hygiene` and `siliconsaga.org/aspect-versions: website-hygiene@1.0`. Without them the site is not enrolled, however green its checks are.
-          4. **Register the repository with the catalog**, once, if it is not already there. The instance reads an explicit list of locations and has no discovery provider, so a merged descriptor alone shows nothing.
+          Registration is already done — this run registered the descriptor before it existed, so the catalog is retrying it and the entity will appear on its own once this merges. Until then it shows a read error, which is expected rather than a problem. Nothing to do about it beyond merging.
 
           **This aspect requires the default branch to be `main`.** The deploy stub triggers on it, and the reusable preview workflow also checks out `main` for its visual-diff baseline — so editing the stub's trigger alone is not enough, and a site on `master` or anything else is not supported today.
 
           The stubs follow volundr's `main` rather than a pinned SHA, which is [volundr's recorded trust trade-off](https://github.com/SiliconSaga/volundr#trust-model) — branch protection there in exchange for no per-caller drift.
+
+    # Register the descriptor BEFORE it exists. A location whose target is
+    # missing still persists: the catalog validates only on dry run, so
+    # createLocation writes the row, the processing loop retries it on every
+    # refresh, and it resolves by itself the moment this pull request merges.
+    # optional: true is what keeps the run green meanwhile — the action's own
+    # follow-up dry run is the part that fails on a file that is not there yet.
+    #
+    # Registering unconditionally is deliberate. If the site is already
+    # registered this conflicts and is swallowed, which is harmless, and that
+    # is cheaper than asking which case you are in.
+    #
+    # The cost, stated rather than hidden: until the merge the location carries
+    # a read error in the catalog, and a pull request that is never merged
+    # leaves one behind for somebody to delete. That is a better trade than
+    # sending every adopter back to do this by hand afterwards, which is the
+    # step most likely to be skipped — everything looks finished without it.
+    - id: register
+      name: Register the site with the catalog
+      action: catalog:register
+      input:
+        catalogInfoUrl: https://github.com/${{ (parameters.repoUrl | parseRepoUrl).owner | trim }}/${{ (parameters.repoUrl | parseRepoUrl).repo | trim }}/blob/main/catalog-info.yaml
+        optional: true
 
   output:
     links:

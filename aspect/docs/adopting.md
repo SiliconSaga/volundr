@@ -44,4 +44,6 @@ If your repo has no `catalog-info.yaml`, adoption creates one. If it already has
 
 **Add the annotations by hand if you already had a `catalog-info.yaml`.** The Create-page door will not overwrite a descriptor it did not write, so in that case the enrollment is not recorded and the site is not enrolled however green its checks are.
 
-**Register the repository with the catalog, once.** The descriptor being merged does not by itself put your site in Backstage: the instance reads an explicit list of locations and has no discovery provider watching the org. Use the **Register an existing component** flow on the Create page, pointing at your `catalog-info.yaml`. Skip it and everything is correct while nothing appears — the most confusing failure of the set.
+**Registration happens for you, and needs no step here.** The instance reads an explicit list of locations and has no discovery provider watching the org, so a merged descriptor would not appear on its own — but the Create-page door registers the location during adoption, before the file exists. The catalog keeps retrying it and the entity appears once you merge. Expect a read error against that location until then: it is the retry waiting for the file, not a fault.
+
+If you adopted through the agent door instead, or the run predates that step, register it once by hand through **Register an existing component** on the Create page, pointing at your `catalog-info.yaml`. Skipping it is the most confusing failure of the set — everything is correct and nothing appears.
