@@ -30,27 +30,26 @@ jobs:
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      # Runs after checkout so it can read the caller's CNAME: a site served on
-      # a custom domain lives at the domain root, so its previews live at
-      # /pr-preview/pr-N without the repo-name segment github.io serving needs.
-      # CNAME is PR-controlled content: accept only a regular file whose first
-      # line is a plain domain, and fail loudly on anything else so it can
-      # never reach shell source or smuggle extra lines into GITHUB_OUTPUT.
+      # A site served on a custom domain lives at the domain root, so its
+      # previews live at /pr-preview/pr-N without the repo-name segment
+      # github.io serving needs. The domain comes from the Pages API — the
+      # domain GitHub is ACTUALLY serving — never from the PR's CNAME file:
+      # server-side state can't be forged by a PR, and the transition PR that
+      # introduces a CNAME still previews correctly on github.io until its
+      # merge makes the domain live. Callers grant pages: read; when the API
+      # is unreadable (Pages not yet enabled — e.g. the bootstrap PR adopting
+      # these workflows) the coordinates fall back to github.io with a warning.
       - name: Derive site coordinates
         id: coords
         run: |
           set -euo pipefail
           REPO="${GITHUB_REPOSITORY#*/}"
           OWNER="${GITHUB_REPOSITORY%%/*}"
-          if [ -L CNAME ]; then
-            echo "CNAME must be a regular file, not a symlink." >&2
-            exit 1
-          elif [ -f CNAME ]; then
-            DOMAIN="$(head -n1 CNAME | tr -d '[:space:]')"
-            if ! printf '%s' "$DOMAIN" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$'; then
-              echo "CNAME's first line is not a plain domain — refusing to use it." >&2
-              exit 1
-            fi
+          if ! DOMAIN="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '.cname // empty')"; then
+            echo "::warning::Cannot read the Pages configuration (not enabled yet, or the caller lacks pages: read) — assuming github.io serving."
+            DOMAIN=""
+          fi
+          if [ -n "$DOMAIN" ]; then
             echo "site=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
             echo "prefix=" >> "$GITHUB_OUTPUT"
           else
@@ -217,24 +216,19 @@ jobs:
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      # After checkout for the same reason as the preview job: the caller's
-      # CNAME decides whether preview URLs carry the repo-name segment. Same
-      # validation as the preview job — CNAME is PR-controlled content.
+      # Same Pages-API derivation as the preview job: the served domain
+      # decides whether preview URLs carry the repo-name segment.
       - name: Derive site coordinates
         id: coords
         run: |
           set -euo pipefail
           REPO="${GITHUB_REPOSITORY#*/}"
           OWNER="${GITHUB_REPOSITORY%%/*}"
-          if [ -L CNAME ]; then
-            echo "CNAME must be a regular file, not a symlink." >&2
-            exit 1
-          elif [ -f CNAME ]; then
-            DOMAIN="$(head -n1 CNAME | tr -d '[:space:]')"
-            if ! printf '%s' "$DOMAIN" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$'; then
-              echo "CNAME's first line is not a plain domain — refusing to use it." >&2
-              exit 1
-            fi
+          if ! DOMAIN="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '.cname // empty')"; then
+            echo "::warning::Cannot read the Pages configuration (not enabled yet, or the caller lacks pages: read) — assuming github.io serving."
+            DOMAIN=""
+          fi
+          if [ -n "$DOMAIN" ]; then
             echo "site=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
           else
             echo "site=https://${OWNER,,}.github.io/${REPO}" >> "$GITHUB_OUTPUT"

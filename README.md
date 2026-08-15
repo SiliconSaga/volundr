@@ -26,8 +26,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: gh-pages-write
@@ -35,6 +34,8 @@ concurrency:
 
 jobs:
   deploy:
+    permissions:
+      contents: write
     uses: SiliconSaga/volundr/.github/workflows/jekyll-deploy.yml@main
 ```
 
@@ -47,9 +48,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 concurrency:
   group: gh-pages-write
@@ -57,10 +56,14 @@ concurrency:
 
 jobs:
   preview:
+    permissions:
+      contents: write
+      pull-requests: write
+      pages: read
     uses: SiliconSaga/volundr/.github/workflows/pr-preview.yml@main
 ```
 
-Caller assumptions: a Jekyll site with a checked-in `Gemfile` (the `github-pages` gem provides `jekyll-sitemap`, which the visual diff's CI overlay enables), Pages served from the `gh-pages` branch, and repo URLs derived from `owner.github.io/repo` (the workflows derive both from `GITHUB_REPOSITORY` — no inputs needed).
+Caller assumptions: a Jekyll site with a checked-in `Gemfile` (the `github-pages` gem provides `jekyll-sitemap`, which the visual diff's CI overlay enables) and Pages served from the `gh-pages` branch. Preview URLs derive from the Pages configuration the caller's repo is actually serving (`pages: read`): a custom domain when one is live, `owner.github.io/repo` otherwise — no inputs needed.
 
 ## Trust model
 
