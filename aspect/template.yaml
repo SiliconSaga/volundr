@@ -29,14 +29,30 @@ spec:
     - title: Target site
       required: [repoUrl, owner]
       properties:
+        # allowedOwners turns the owner box from free text into a dropdown. It
+        # was free text, and the first real run failed with a bare "Not Found"
+        # from GitHub — which is what you get for a repository the token cannot
+        # see, so a typo here is indistinguishable from a permissions problem.
+        # A closed list makes that class of mistake unrepresentable.
+        #
+        # The cost is real: this door now only targets SiliconSaga repos. That
+        # is the right trade because the other door takes everything else —
+        # SKILL.md works on any repo and needs no Backstage at all, which is
+        # already the path for personal sites and for the tutorial audience.
+        # Add an org here when one starts adopting.
         repoUrl:
           title: Site repository
           type: string
           ui:field: RepoUrlPicker
           ui:options:
             allowedHosts: [github.com]
+            allowedOwners: [SiliconSaga]
+        # Retitled because the form previously had two fields a reader could
+        # reasonably call "owner": the repository's GitHub org, and this, the
+        # Backstage group that will own the catalog entity. They are unrelated,
+        # and putting one in the other's box is exactly how the run failed.
         owner:
-          title: Owning group
+          title: Catalog owner (a Backstage group, not the GitHub org)
           type: string
           ui:field: OwnerPicker
           ui:options:
@@ -114,6 +130,23 @@ spec:
           # catalog-info.yaml. Bumping one without the other makes every new
           # adopter record a release that does not exist.
           moduleRelease: '1.0'
+
+    # Says what it is about to talk to, before it talks to it. GitHub answers a
+    # repository the token cannot see with 404 rather than 403, so a wrong
+    # owner and a missing permission produce the same bare "Not Found" — and
+    # the step that reports it does not say which coordinates it tried.
+    - id: coordinates
+      name: Show the target coordinates
+      action: debug:log
+      input:
+        message: |
+          Opening a pull request against:
+            host  ${{ (parameters.repoUrl | parseRepoUrl).host }}
+            owner ${{ (parameters.repoUrl | parseRepoUrl).owner }}
+            repo  ${{ (parameters.repoUrl | parseRepoUrl).repo }}
+          If the next step fails with "Not Found", check these three first —
+          GitHub returns 404 for a repository the token cannot see, so that
+          error means these coordinates at least as often as it means access.
 
     - id: pr
       name: Open the adoption pull request
