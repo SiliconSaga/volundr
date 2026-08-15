@@ -46,6 +46,14 @@ spec:
         # deploy.yml and no pr-preview.yml; a combined flag forces you either to
         # overwrite the first or to skip the second, and neither completes the
         # adoption.
+        #
+        # All three default to TRUE, and consistency is the point. They read
+        # identically — "this repo has no X yet" — so a mixed default is a trap:
+        # the first real adoption run skipped the descriptor because that one
+        # alone defaulted false, producing a site with green CI that was never
+        # enrolled. Creating is also the recoverable direction. Over-creating
+        # shows up as a file in the pull-request diff, which a human reviews
+        # before merge; under-creating is silent and looks like success.
         createDeployWorkflow:
           title: This repo has no .github/workflows/deploy.yml yet
           type: boolean
@@ -66,8 +74,8 @@ spec:
         createCatalogInfo:
           title: This repo has no catalog-info.yaml yet
           type: boolean
-          default: false
-          description: Leave unchecked if the site is already in the catalog — an existing descriptor is never overwritten, and you add the two annotations by hand instead.
+          default: true
+          description: Uncheck if the site already has one. An existing descriptor is never overwritten — it carries ownership and links this template cannot reconstruct — so in that case add `siliconsaga.org/aspects` and `siliconsaga.org/aspect-versions` to it by hand, or let the agent door do it.
   steps:
     - id: deployStub
       name: Render the deploy caller stub

@@ -7,5 +7,6 @@ The work is done by the reusable workflows one level up in this repo. Adopting i
 - [Adopting](adopting.md) — what lands in your repo and why.
 - [Pages source](pages-source.md) — the one step no pull request can do for you.
 - [Local preview](local-preview.md) — what changes once a Gemfile exists.
+- [Trying it on a throwaway site](try-it.md) — make a target and drive the whole loop, including the steps that come after the merge.
 
 Both adoption doors read this same module: the Create-page template for anyone with a Backstage instance to hand, and `SKILL.md` for anyone working from a CLI with an agent.
