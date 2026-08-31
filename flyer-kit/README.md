@@ -43,6 +43,8 @@ The converter is probed like the browser is, and only when a manifest actually c
 
 Override with `JPEG_CONVERTER=<binary>`; quality defaults to 92 and is settable via `JPEG_QUALITY`. Metadata is stripped on write, so repeat runs are byte-identical and CI does not commit a "change" for an unchanged flyer — the same problem `pdf-same.py` solves for PDFs, handled here at write time instead of compare time.
 
+**Different converters produce different bytes for the same input**, and that is expected rather than a bug — JPEG encoders are not required to agree. Each is deterministic *with itself* (verified: repeat runs give an identical SHA-256 under both ImageMagick and `sips`), so the practical effect is only that a contributor whose machine picks a different converter than CI will see one regeneration commit the first time CI touches that flyer, after which it is stable. **CI is the authority**, since it is what commits regenerated exports. Install ImageMagick locally if you want your output to match it exactly.
+
 ## Local use (no GitHub needed)
 
 Commands below run from the site repo's root with volundr cloned alongside it (adjust `../volundr` if yours lives elsewhere — angle-bracket placeholders would be parsed by bash as redirections, so these are real runnable commands):
