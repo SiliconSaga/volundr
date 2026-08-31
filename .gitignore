@@ -1,0 +1,2 @@
+# Local install of the visual-diff tooling deps (CI does its own npm ci).
+node_modules/
