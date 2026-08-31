@@ -21,13 +21,27 @@ flyers/
 Whitespace-separated columns, `#` comments allowed:
 
 ```text
-# html               widthxheight  scale  pdf|png  outbase
-index.html           816x1056      2      pdf      my-flyer
-middle-school.html   816x1056      2      pdf      my-flyer-middle-school
-instagram.html       1080x1350     1      png      my-flyer-instagram
+# html               widthxheight  scale  pdf|png|jpg  outbase
+index.html           816x1056      2      pdf          my-flyer
+middle-school.html   816x1056      2      pdf          my-flyer-middle-school
+instagram.html       1080x1350     1      jpg          my-flyer-instagram
 ```
 
 `816x1056` is US letter at 96dpi CSS pixels; scale 2 doubles the PNG resolution; `pdf` also emits a print PDF via the browser's print engine (pair it with `@page { size: letter; margin: 0; }` in the flyer CSS).
+
+### Choosing `png` vs `jpg`
+
+**Use `jpg` for anything headed to Instagram.** Its content-publishing API accepts **JPEG only** and rejects PNG outright, so a PNG export cannot be published no matter how correct its dimensions are. `png` remains right for email, embedding in a page, or anywhere lossless matters.
+
+Chromium's `--screenshot` always writes PNG regardless of the filename, so `jpg` is necessarily render-then-convert: the kit renders the PNG, converts it, and removes the intermediate — one manifest row still yields exactly one deliverable.
+
+The converter is probed like the browser is, and only when a manifest actually contains a `jpg` row, so a PDF/PNG-only site never needs one installed:
+
+1. ImageMagick (`magick`, then `convert`) — what CI has, and CI is the authority that commits regenerated exports
+2. `sips` — built into macOS, so most contributors need nothing
+3. Python **Pillow**
+
+Override with `JPEG_CONVERTER=<binary>`; quality defaults to 92 and is settable via `JPEG_QUALITY`. Metadata is stripped on write, so repeat runs are byte-identical and CI does not commit a "change" for an unchanged flyer — the same problem `pdf-same.py` solves for PDFs, handled here at write time instead of compare time.
 
 ## Local use (no GitHub needed)
 
@@ -58,7 +72,7 @@ jobs:
     uses: SiliconSaga/volundr/.github/workflows/flyer-export.yml@main
 ```
 
-Any non-fork PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The push uses the workflow's `GITHUB_TOKEN`, and GitHub's anti-recursion rules split by event: `push`-triggered workflows are simply never created for such pushes, while the resulting `pull_request` `synchronize` runs are created but held in an approval-required state (`action_required` — observed live on mtl-hockey#2; a write-access user can optionally approve them from the PR's merge box). Either way there is structurally no loop and no automatic follow-up run — the PR's other checks reflect the pre-regeneration head, an accepted trade for the no-custom-secrets trust model (the site preview renders flyer HTML, which the regeneration commit never touches). PDFs are compared metadata-insensitively (`pdf-same.py` strips Chromium's per-run CreationDate/ModDate/ID), so regenerating an unchanged flyer commits nothing.
+Any non-fork PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The push uses the workflow's `GITHUB_TOKEN`, and GitHub's anti-recursion rules split by event: `push`-triggered workflows are simply never created for such pushes, while the resulting `pull_request` `synchronize` runs are created but held in an approval-required state (`action_required` — observed live on mtl-hockey#2; a write-access user can optionally approve them from the PR's merge box). Either way there is structurally no loop and no automatic follow-up run — the PR's other checks reflect the pre-regeneration head, an accepted trade for the no-custom-secrets trust model (the site preview renders flyer HTML, which the regeneration commit never touches). PDFs are compared metadata-insensitively (`pdf-same.py` strips Chromium's per-run CreationDate/ModDate/ID), so regenerating an unchanged flyer commits nothing. JPEGs need no equivalent because their metadata is stripped when written. `ubuntu-latest` ships ImageMagick, so `jpg` rows work in CI with no extra install step.
 
 ## Fonts
 
