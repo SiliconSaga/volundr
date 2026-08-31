@@ -131,7 +131,7 @@ spec:
           # Must equal siliconsaga.org/module-release in this module's
           # catalog-info.yaml. Bumping one without the other makes every new
           # adopter record a release that does not exist.
-          moduleRelease: '1.0'
+          moduleRelease: '1.1'
 
     # Says what it is about to talk to, before it talks to it. GitHub answers a
     # repository the token cannot see with 404 rather than 403, so a wrong

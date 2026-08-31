@@ -30,8 +30,13 @@ metadata:
     #   2. leidangr scripts/smoke-catalog.sh → the module-release assertion
     # The smoke assertion is deliberately exact rather than a presence check:
     # it is the thing that fails loudly when only one of the three was bumped.
-    siliconsaga.org/module-release: '1.0'
+    siliconsaga.org/module-release: '1.1'
     siliconsaga.org/visir: './docs/pages-source.md'
+    # Where the standard lives, resolved against this entity's own source
+    # location so it travels with the module. It was previously reachable only
+    # through a links[] entry with a free-text title, which is display metadata
+    # — nothing could find it mechanically, and a fact source has to.
+    siliconsaga.org/standard: './standard.yaml'
     backstage.io/techdocs-ref: dir:.
   links:
     - url: https://github.com/SiliconSaga/volundr/blob/main/aspect/standard.yaml
