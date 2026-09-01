@@ -37,7 +37,7 @@ Chromium's `--screenshot` always writes PNG regardless of the filename, so `jpg`
 
 The converter is probed like the browser is, and only when a manifest actually contains a `jpg` row, so a PDF/PNG-only site never needs one installed:
 
-1. ImageMagick (`magick`, then `convert`) — what CI has, and CI is the authority that commits regenerated exports
+1. ImageMagick (`magick`, then `convert`) — what CI installs, and CI is the authority that commits regenerated exports
 2. `sips` — built into macOS, so most contributors need nothing
 3. Python **Pillow**
 
@@ -74,7 +74,7 @@ jobs:
     uses: SiliconSaga/volundr/.github/workflows/flyer-export.yml@main
 ```
 
-Any non-fork PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The push uses the workflow's `GITHUB_TOKEN`, and GitHub's anti-recursion rules split by event: `push`-triggered workflows are simply never created for such pushes, while the resulting `pull_request` `synchronize` runs are created but held in an approval-required state (`action_required` — observed live on mtl-hockey#2; a write-access user can optionally approve them from the PR's merge box). Either way there is structurally no loop and no automatic follow-up run — the PR's other checks reflect the pre-regeneration head, an accepted trade for the no-custom-secrets trust model (the site preview renders flyer HTML, which the regeneration commit never touches). PDFs are compared metadata-insensitively (`pdf-same.py` strips Chromium's per-run CreationDate/ModDate/ID), so regenerating an unchanged flyer commits nothing. JPEGs need no equivalent because their metadata is stripped when written. `ubuntu-latest` ships ImageMagick, so `jpg` rows work in CI with no extra install step.
+Any non-fork PR touching `flyers/**` gets its `exports/` regenerated in CI and committed back to the PR branch — combined with the site's pr-preview workflow, a flyer edit made entirely in the GitHub UI (or by a sandboxed agent) arrives as a PR with fresh deliverables and a visual preview. Fork PRs are skipped (read-only token). The push uses the workflow's `GITHUB_TOKEN`, and GitHub's anti-recursion rules split by event: `push`-triggered workflows are simply never created for such pushes, while the resulting `pull_request` `synchronize` runs are created but held in an approval-required state (`action_required` — observed live on mtl-hockey#2; a write-access user can optionally approve them from the PR's merge box). Either way there is structurally no loop and no automatic follow-up run — the PR's other checks reflect the pre-regeneration head, an accepted trade for the no-custom-secrets trust model (the site preview renders flyer HTML, which the regeneration commit never touches). PDFs are compared metadata-insensitively (`pdf-same.py` strips Chromium's per-run CreationDate/ModDate/ID), so regenerating an unchanged flyer commits nothing. JPEGs need no equivalent because their metadata is stripped when written. The reusable workflow installs ImageMagick itself — the Ubuntu 24.04 runner image behind `ubuntu-latest` stopped shipping it — so `jpg` rows work in CI with nothing for the caller to add.
 
 ## Fonts
 

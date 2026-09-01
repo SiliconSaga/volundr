@@ -50,10 +50,11 @@ if [ -z "$BROWSER" ]; then echo "ERROR: no Edge/Chrome found (set BROWSER to you
 # JPEG deliverable is necessarily render-then-convert. Instagram's content
 # publishing API accepts JPEG ONLY, which is the reason this exists.
 #
-# Order is deliberate: ImageMagick first because it is what CI has (and CI is
-# the authority that commits regenerated exports), then macOS's built-in sips,
-# then Pillow. Set JPEG_CONVERTER to an explicit magick/convert/sips binary to
-# override.
+# Order is deliberate: ImageMagick first because it is what CI installs (the
+# reusable workflow apt-gets it — ubuntu-latest stopped shipping it with the
+# 24.04 image — and CI is the authority that commits regenerated exports),
+# then macOS's built-in sips, then Pillow. Set JPEG_CONVERTER to an explicit
+# magick/convert/sips binary to override.
 JPEG_CONVERTER="${JPEG_CONVERTER:-}"
 JPEG_QUALITY="${JPEG_QUALITY:-92}"
 resolve_jpeg_converter() {
