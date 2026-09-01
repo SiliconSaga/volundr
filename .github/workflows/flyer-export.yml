@@ -38,6 +38,16 @@ jobs:
           repository: SiliconSaga/volundr
           path: .volundr
 
+      # jpg manifest rows need a converter, and the 24.04 runner image behind
+      # ubuntu-latest ships neither ImageMagick nor Pillow (22.04 had
+      # ImageMagick; it was dropped in the migration). Installed
+      # unconditionally: flyers/** PRs are rare enough that probing manifests
+      # first would buy seconds at the price of a second code path.
+      - name: Install ImageMagick for jpg rows
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends imagemagick
+
       - name: Regenerate exports for every flyer campaign
         run: |
           set -euo pipefail
