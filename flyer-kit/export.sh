@@ -64,9 +64,14 @@ resolve_jpeg_converter() {
       JPEG_CONVERTER="$(command -v "$cmd")"; return 0
     fi
   done
-  if command -v python3 >/dev/null 2>&1 && python3 -c 'import PIL' 2>/dev/null; then
-    JPEG_CONVERTER="python3"; return 0
-  fi
+  # Probe python3 then python — Windows Git Bash often carries only `python`,
+  # and a bare `command -v python3` there can hit the Microsoft Store stub,
+  # which exists but cannot run anything (same guard make-qr.sh uses).
+  for py in python3 python; do
+    if "$py" --version >/dev/null 2>&1 && "$py" -c 'import PIL' 2>/dev/null; then
+      JPEG_CONVERTER="$py"; return 0
+    fi
+  done
   echo "ERROR: flyers.conf requests a jpg variant but no JPEG converter was found." >&2
   echo "  Install one of: ImageMagick (magick/convert), or Python Pillow." >&2
   echo "  macOS has sips built in. Or set JPEG_CONVERTER to an explicit binary." >&2
@@ -92,9 +97,15 @@ to_jpeg() { # <src.png> <dst.jpg>
       "$JPEG_CONVERTER" "$1" -background white -flatten -strip \
         -quality "$JPEG_QUALITY" "$2" ;;
     sips)
+      # Unlike the other branches this does NOT strip metadata: sips has no
+      # strip-all flag, only per-key --deleteProperty, and guessing key names
+      # without a macOS box to verify on risks breaking the branch outright.
+      # Accepted because sips is a local-contributor convenience — CI's
+      # ImageMagick output is the authority that canonicalizes committed
+      # bytes, so any carryover lasts exactly one CI regeneration.
       "$JPEG_CONVERTER" -s format jpeg -s formatOptions "$JPEG_QUALITY" \
         "$1" --out "$2" >/dev/null ;;
-    python3)
+    python3|python)
       "$JPEG_CONVERTER" - "$1" "$2" "$JPEG_QUALITY" <<'PY'
 import sys
 from PIL import Image
@@ -129,7 +140,7 @@ while IFS= read -r raw || [ -n "$raw" ]; do
   read -r html size scale kind out extra <<EOF_LINE
 $line
 EOF_LINE
-  if [ -z "${out:-}" ]; then fail "expected 5 columns: html widthxheight scale pdf|png outbase"; fi
+  if [ -z "${out:-}" ]; then fail "expected 5 columns: html widthxheight scale pdf|png|jpg outbase"; fi
   if [ -n "${extra:-}" ]; then fail "unexpected extra column(s): $extra"; fi
   # outbase is a filename stem, never a path — a separator or dot-segment
   # could write (and later stage) files outside exports/.
@@ -153,11 +164,17 @@ EOF_LINE
   fi
   if [ "$kind" = "jpg" ]; then
     resolve_jpeg_converter
-    to_jpeg "exports/$out.png" "exports/$out.jpg"
-    # The PNG was only ever an intermediate here. Leaving it would put two
-    # deliverables in exports/ for one manifest row, and exports/ is meant to
-    # be exactly what the manifest declares — someone would eventually hand a
-    # publisher the .png that Instagram rejects.
+    # The PNG was only ever an intermediate here — success or failure. Leaving
+    # it would put two deliverables in exports/ for one manifest row (exports/
+    # is meant to be exactly what the manifest declares — someone would
+    # eventually hand a publisher the .png that Instagram rejects), and a
+    # failed conversion must not leave it behind either, or the failure mode
+    # is a plausible-looking undeclared file instead of a loud stop.
+    if ! to_jpeg "exports/$out.png" "exports/$out.jpg"; then
+      rm -f "exports/$out.png"
+      echo "ERROR: JPEG conversion failed for $out" >&2
+      exit 1
+    fi
     rm -f "exports/$out.png"
   fi
   echo "exported $out"
