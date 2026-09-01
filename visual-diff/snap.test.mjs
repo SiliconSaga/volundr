@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PNG } from 'pngjs';
-import { snapBox, isQuietRow } from './snap.mjs';
+import { snapBox, isQuietRow, inflateBox } from './snap.mjs';
 
 const STROKE = 3;
 
@@ -95,6 +95,19 @@ test('a uniform dark rule is content, not a seam — the stroke never lands on i
       }
     }
   }
+});
+
+test('inflateBox: interior box grows by the gap on all four sides', () => {
+  const s = inflateBox({ minX: 20, minY: 30, maxX: 60, maxY: 70 }, 5, 100, 100);
+  assert.deepEqual(s, { minX: 15, minY: 25, maxX: 65, maxY: 75 });
+});
+
+test('inflateBox: the gap collapses at image bounds by policy', () => {
+  // Change touches the top-left corner and the right edge: clamped sides keep
+  // the raw edge (nothing beyond the boundary for the ring to be mistaken
+  // for), unclamped sides still gain the full gap.
+  const s = inflateBox({ minX: 2, minY: 0, maxX: 96, maxY: 40 }, 5, 100, 100);
+  assert.deepEqual(s, { minX: 0, minY: 0, maxX: 99, maxY: 45 });
 });
 
 for (const gap of [1, 2, 3]) {

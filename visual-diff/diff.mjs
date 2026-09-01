@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { san } from './slug.mjs';
-import { snapBox } from './snap.mjs';
+import { snapBox, inflateBox } from './snap.mjs';
 
 const [, , baseDir, candDir, pubDir, previewUrl] = process.argv;
 if (!baseDir || !candDir || !pubDir || !previewUrl) {
@@ -218,12 +218,9 @@ for (const r of common) {
       // neighbouring line.
       // Grow the box by the stand-off BEFORE snapping: edges then seek quiet
       // seams outward from the inflated bounds, so the ring keeps its distance
-      // even when a qualifying seam hugs the changed pixels.
-      const grown = {
-        minX: Math.max(0, box.minX - BOX_GAP), minY: Math.max(0, box.minY - BOX_GAP),
-        maxX: Math.min(w - 1, box.maxX + BOX_GAP), maxY: Math.min(h - 1, box.maxY + BOX_GAP),
-      };
-      const snapped = snapBox(B, grown, w, h, BOX_STROKE);
+      // even when a qualifying seam hugs the changed pixels. (At image bounds
+      // the gap collapses by policy — see inflateBox.)
+      const snapped = snapBox(B, inflateBox(box, BOX_GAP, w, h), w, h, BOX_STROKE);
       // A shorter after-page is padded with background below its real content,
       // and every row of that tail "differs" from the before content — which
       // would drag the ring and the crop down across a void (owner feedback on
