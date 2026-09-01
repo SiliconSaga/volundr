@@ -72,6 +72,22 @@ export function localBackground(png, box, w, h) {
   return null;
 }
 
+// Grow a box by `gap` on every side, clamped to the image bounds. Boundary
+// policy: at an image edge the gap deliberately collapses — there is nothing
+// beyond the edge for the ring to be mistaken for, and padding the rendered
+// image to preserve the gap would misrepresent the page's real geometry. The
+// ring may then sit against edge-touching content, which is the same
+// never-worse-than-raw degradation snapBox falls back to when no seam exists.
+export function inflateBox(box, gap, w, h) {
+  if (!box) return box;
+  return {
+    minX: Math.max(0, box.minX - gap),
+    minY: Math.max(0, box.minY - gap),
+    maxX: Math.min(w - 1, box.maxX + gap),
+    maxY: Math.min(h - 1, box.maxY + gap),
+  };
+}
+
 // Expand each box edge outward to the nearest position whose exterior stroke
 // band (`stroke` rows/cols just outside the edge — the exact pixels the ring
 // will occupy) is entirely background. Rows first with the raw x-extent, then

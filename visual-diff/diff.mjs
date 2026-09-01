@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { san } from './slug.mjs';
-import { snapBox } from './snap.mjs';
+import { snapBox, inflateBox } from './snap.mjs';
 
 const [, , baseDir, candDir, pubDir, previewUrl] = process.argv;
 if (!baseDir || !candDir || !pubDir || !previewUrl) {
@@ -31,6 +31,11 @@ const DIFF_ALPHA = 0.5;
 // they are invisible until you zoom.
 const DILATE = 2;
 const BOX_STROKE = 3;   // outline drawn around the changed region on the marked shot
+// Minimum stand-off between changed pixels and the ring. Snapping alone can
+// legally land the stroke band one pixel past a tight feature — a link's
+// underline has a quiet seam right beneath it — and the ring then reads as
+// part of the feature it is pointing at.
+const BOX_GAP = 5;
 // Edge placement for the ring lives in snap.mjs (testable in isolation): edges
 // grow outward to quiet seams of the after image with room for the stroke band.
 
@@ -211,7 +216,11 @@ for (const r of common) {
       // the snapped bounds — inside the seam, touching neither the ringed text
       // nor (seams between text lines run ~10px at default line-height) the
       // neighbouring line.
-      const snapped = snapBox(B, box, w, h, BOX_STROKE);
+      // Grow the box by the stand-off BEFORE snapping: edges then seek quiet
+      // seams outward from the inflated bounds, so the ring keeps its distance
+      // even when a qualifying seam hugs the changed pixels. (At image bounds
+      // the gap collapses by policy — see inflateBox.)
+      const snapped = snapBox(B, inflateBox(box, BOX_GAP, w, h), w, h, BOX_STROKE);
       // A shorter after-page is padded with background below its real content,
       // and every row of that tail "differs" from the before content — which
       // would drag the ring and the crop down across a void (owner feedback on
