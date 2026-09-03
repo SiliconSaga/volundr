@@ -23,15 +23,37 @@ metadata:
     # workflow contract changes; adopters recording an older value then read as
     # `behind` until they re-adopt, which is the whole point of recording it.
     #
-    # Two other places repeat it and must move together — there is no way to
-    # make a scaffolder template read this file, so the coupling is managed by
-    # saying so rather than by hoping:
-    #   1. aspect/template.yaml  → steps.descriptor.input.values.moduleRelease
-    #   2. leidangr scripts/smoke-catalog.sh → the module-release assertion
+    # FOUR other places repeat it and must move together — there is no way to
+    # make a scaffolder template or a markdown file read this one, so the
+    # coupling is managed by saying so rather than by hoping:
+    #   1. aspect/template.yaml → steps.descriptor.input.values.moduleRelease
+    #   2. aspect/template.yaml → the adoption pull request's own description,
+    #      where step 3 tells an adopter with an existing descriptor what to
+    #      write by hand
+    #   3. aspect/docs/adopting.md → the catalog-info.yaml example
+    #   4. leidangr scripts/smoke-catalog.sh → the module-release assertion
+    #
+    # 2 and 3 are the dangerous ones and were both missed on the 1.0 → 1.1
+    # bump. They are PROSE ADDRESSED TO A HUMAN, so a stale value is followed
+    # correctly and produces an adopter recording a release that does not
+    # exist — reading as `behind` immediately, through no fault of their own,
+    # having done exactly what we told them. Nothing fails, which is why only
+    # this list catches it.
+    #
+    # NOT on the list, because neither can go stale: skeleton-catalog renders
+    # `${{ values.moduleRelease }}` from 1, and SKILL.md tells the agent to
+    # read this file rather than quoting a number. Prefer that shape when
+    # adding a fifth.
+    #
     # The smoke assertion is deliberately exact rather than a presence check:
-    # it is the thing that fails loudly when only one of the three was bumped.
-    siliconsaga.org/module-release: '1.0'
+    # it is the thing that fails loudly when only some of these were bumped.
+    siliconsaga.org/module-release: '1.1'
     siliconsaga.org/visir: './docs/pages-source.md'
+    # Where the standard lives, resolved against this entity's own source
+    # location so it travels with the module. It was previously reachable only
+    # through a links[] entry with a free-text title, which is display metadata
+    # — nothing could find it mechanically, and a fact source has to.
+    siliconsaga.org/standard: './standard.yaml'
     backstage.io/techdocs-ref: dir:.
   links:
     - url: https://github.com/SiliconSaga/volundr/blob/main/aspect/standard.yaml

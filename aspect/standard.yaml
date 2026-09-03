@@ -9,6 +9,18 @@
 # Every trial names an `artifact` — the concrete thing a fact source inspects.
 # Prose rules read fine and compute nothing, which is the trap worth avoiding
 # while the fact source is still unbuilt.
+#
+# `check` is the MACHINE-READABLE half of `rule`. The prose stays, because a
+# human has to trust this file, but prose alone left the fact source with
+# nothing to compute: it could fetch the Gemfile and still not know the gem it
+# was looking for. The vocabulary is CLOSED — file-contains, workflow-job-uses,
+# pages-source-branch — rather than an expression language, for two reasons.
+# This file has to stay readable by the people who trust it, and it is read
+# OVER THE NETWORK by leidangr, where a general evaluator over remotely fetched
+# input is a far larger surface than three typed predicates.
+#
+# Values are matched EXACTLY, with no trimming downstream. A padded value is a
+# real error and the leidangr-side validator rejects one.
 standard:
   id: website-hygiene
   aspect: website-hygiene
@@ -24,6 +36,7 @@ standard:
           rule: a Gemfile at the repo root declares the github-pages gem
           artifact: Gemfile
           factSource: repo-files
+          check: { type: file-contains, value: github-pages }
           remediation: ./docs/adopting.md
     - id: deploy
       appliesTo: [web-ui]
@@ -32,11 +45,15 @@ standard:
           rule: a job in .github/workflows/deploy.yml uses SiliconSaga/volundr/.github/workflows/jekyll-deploy.yml@main
           artifact: .github/workflows/deploy.yml
           factSource: repo-files
+          check:
+            type: workflow-job-uses
+            value: SiliconSaga/volundr/.github/workflows/jekyll-deploy.yml@main
           remediation: ./docs/adopting.md
         - id: pages-source-is-gh-pages
           rule: the repository's GitHub Pages source branch is gh-pages
           artifact: github-pages-settings
           factSource: github-pages-api
+          check: { type: pages-source-branch, value: gh-pages }
           remediation: ./docs/pages-source.md
     - id: preview
       appliesTo: [web-ui]
@@ -45,4 +62,7 @@ standard:
           rule: a job in .github/workflows/pr-preview.yml uses SiliconSaga/volundr/.github/workflows/pr-preview.yml@main
           artifact: .github/workflows/pr-preview.yml
           factSource: repo-files
+          check:
+            type: workflow-job-uses
+            value: SiliconSaga/volundr/.github/workflows/pr-preview.yml@main
           remediation: ./docs/adopting.md
