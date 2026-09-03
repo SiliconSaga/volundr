@@ -29,7 +29,7 @@ Two annotations record the adoption:
 
 ```yaml
 siliconsaga.org/aspects: website-hygiene
-siliconsaga.org/aspect-versions: website-hygiene@1.0
+siliconsaga.org/aspect-versions: website-hygiene@1.1
 ```
 
 The first enrolls the component; the second records which release of this module it adopted. When this module gains a trial and its release bumps, a component still recording the older value reads as *behind* — that is the drift signal, and it is why the version is worth recording even though nothing enforces it yet.
