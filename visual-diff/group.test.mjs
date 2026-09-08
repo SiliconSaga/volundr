@@ -47,9 +47,26 @@ test('a different change in the same box gets a different key', () => {
   assert.notEqual(keyA, keyC);
 });
 
-test('the same pixels at a different box position get a different key', () => {
-  const before = page(20, 60, false);
-  const after = page(20, 60, true);
-  const shifted = { minX: 69, minY: 3, maxX: 89, maxY: 10 };
-  assert.notEqual(regionKey(before, after, BOX), regionKey(before, after, shifted));
+test('a difference on the before side alone changes the key', () => {
+  const differentBefore = page(20, 60, false);
+  bar(differentBefore, 75, 6, 85, 9, 150);           // box region differed BEFORE the change too
+  const keyA = regionKey(page(20, 60, false), page(20, 60, true), BOX);
+  const keyD = regionKey(differentBefore, page(20, 60, true), BOX);
+  assert.notEqual(keyA, keyD, 'the before image must be part of the key');
+});
+
+test('identical region content at a different box position gets a different key', () => {
+  // Both pairs: white before, a bar exactly filling the box in the after — the
+  // hashed pixel slices are byte-identical, so only the coordinate prefix can
+  // separate the keys.
+  const shifted = { minX: 69, minY: 3, maxX: 89, maxY: 10 }; // same dims as BOX
+  const after = white(120, 120);
+  bar(after, BOX.minX, BOX.minY, BOX.maxX, BOX.maxY, 230);
+  const shiftedAfter = white(120, 120);
+  bar(shiftedAfter, shifted.minX, shifted.minY, shifted.maxX, shifted.maxY, 230);
+  assert.notEqual(
+    regionKey(white(120, 120), after, BOX),
+    regionKey(white(120, 120), shiftedAfter, shifted),
+    'box coordinates must be part of the key',
+  );
 });
