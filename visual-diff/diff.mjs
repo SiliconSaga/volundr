@@ -8,6 +8,7 @@ import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { san } from './slug.mjs';
 import { snapBox, inflateBox } from './snap.mjs';
+import { regionKey } from './group.mjs';
 
 const [, , baseDir, candDir, pubDir, previewUrl] = process.argv;
 if (!baseDir || !candDir || !pubDir || !previewUrl) {
@@ -241,16 +242,21 @@ for (const r of common) {
         after: PNG.sync.write(cropTo(B, snapped, CROP_MARGIN, w, h)),
         diff: PNG.sync.write(cropTo(diff, snapped, CROP_MARGIN, w, h)),
         changedPx: n,
+        key: regionKey(A, B, snapped),
       });
     }
   }
   if (routeArts.size === 0) continue;
   changed.push(r);
+  // Group on the CHANGE, not the crop: the published crops carry CROP_MARGIN
+  // of per-page context, so hashing whole artifacts scatters an identical
+  // shared-include edit into one group per page the moment the margin catches
+  // each page's own content (mtl-soccer#6: one nav change, 18 groups). The
+  // per-viewport region key covers only the pixels inside the snapped box.
   const keyer = createHash('sha256');
   for (const [vp, art] of routeArts) {
     keyer.update(vp);
-    keyer.update(art.marked); keyer.update(art.before);
-    keyer.update(art.after); keyer.update(art.diff);
+    keyer.update(art.key);
   }
   const key = keyer.digest('hex');
   const existing = groupByKey.get(key);
