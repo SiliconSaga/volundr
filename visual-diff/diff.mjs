@@ -9,6 +9,8 @@ import pixelmatch from 'pixelmatch';
 import { san } from './slug.mjs';
 import { snapBox, inflateBox } from './snap.mjs';
 import { regionKey } from './group.mjs';
+import { alignRows } from './align.mjs';
+import { changeRegions } from './regions.mjs';
 
 const [, , baseDir, candDir, pubDir, previewUrl] = process.argv;
 if (!baseDir || !candDir || !pubDir || !previewUrl) {
@@ -113,12 +115,11 @@ function paint(png, mask, w, h, [r, g, b]) {
   }
 }
 
-// Copy of `src` with a hollow rectangle drawn around the box. This is the image a
-// non-technical reviewer actually reads: their own page, with a ring around the
-// part that moved — not a pixel mask, which is a debugging artifact.
-function markBox(src, box, w, h, stroke, [r, g, b], pad) {
-  const out = new PNG({ width: w, height: h });
-  PNG.bitblt(src, out, 0, 0, w, h, 0, 0);
+// Draw a hollow rectangle around the box, in place. The ringed after image is
+// what a non-technical reviewer actually reads: their own page, with a ring
+// around each part that changed — not a pixel mask, which is a debugging
+// artifact.
+function ringBox(out, box, w, h, stroke, [r, g, b], pad) {
   if (!box) return out;
   const x0 = Math.max(0, box.minX - pad), y0 = Math.max(0, box.minY - pad);
   const x1 = Math.min(w - 1, box.maxX + pad), y1 = Math.min(h - 1, box.maxY + pad);
@@ -149,20 +150,43 @@ const PANE_GAP = 6;               // divider between the panes
 const PANE_GAP_RGB = [60, 60, 60];
 const HERO_STACK_OVER = 620;      // crops wider than this stack vertically
 
+// The panes can differ in height: with row alignment the before pane holds the
+// rows the change replaced, which may be fewer (an insertion) or more (a
+// removal) than the after pane. The shorter pane sits on the divider colour.
 function compositePanes(before, after) {
-  const { width: w, height: h } = before;
-  const horizontal = w <= HERO_STACK_OVER;
-  const W = horizontal ? w * 2 + PANE_GAP : w;
-  const H = horizontal ? h : h * 2 + PANE_GAP;
+  const horizontal = Math.max(before.width, after.width) <= HERO_STACK_OVER;
+  const W = horizontal ? before.width + PANE_GAP + after.width : Math.max(before.width, after.width);
+  const H = horizontal ? Math.max(before.height, after.height) : before.height + PANE_GAP + after.height;
   const out = new PNG({ width: W, height: H });
   for (let p = 0; p < W * H; p++) {
     const i = p * 4;
     out.data[i] = PANE_GAP_RGB[0]; out.data[i + 1] = PANE_GAP_RGB[1];
     out.data[i + 2] = PANE_GAP_RGB[2]; out.data[i + 3] = 255;
   }
-  PNG.bitblt(before, out, 0, 0, w, h, 0, 0);
-  if (horizontal) PNG.bitblt(after, out, 0, 0, w, h, w + PANE_GAP, 0);
-  else PNG.bitblt(after, out, 0, 0, w, h, 0, h + PANE_GAP);
+  PNG.bitblt(before, out, 0, 0, before.width, before.height, 0, 0);
+  if (horizontal) PNG.bitblt(after, out, 0, 0, after.width, after.height, before.width + PANE_GAP, 0);
+  else PNG.bitblt(after, out, 0, 0, after.width, after.height, 0, before.height + PANE_GAP);
+  return out;
+}
+
+// Several changed regions publish as one image per artifact: the region crops
+// stacked top to bottom in page order, split by a band of the divider colour.
+const REGION_DIVIDER = 16;
+function stackRegions(pngs) {
+  if (pngs.length === 1) return pngs[0];
+  const W = Math.max(...pngs.map((p) => p.width));
+  const H = pngs.reduce((s, p) => s + p.height, 0) + REGION_DIVIDER * (pngs.length - 1);
+  const out = new PNG({ width: W, height: H });
+  for (let p = 0; p < W * H; p++) {
+    const i = p * 4;
+    out.data[i] = PANE_GAP_RGB[0]; out.data[i + 1] = PANE_GAP_RGB[1];
+    out.data[i + 2] = PANE_GAP_RGB[2]; out.data[i + 3] = 255;
+  }
+  let y = 0;
+  for (const p of pngs) {
+    PNG.bitblt(p, out, 0, 0, p.width, p.height, 0, y);
+    y += p.height + REGION_DIVIDER;
+  }
   return out;
 }
 
@@ -200,17 +224,29 @@ for (const r of common) {
     const a = PNG.sync.read(readFileSync(bp));
     const b = PNG.sync.read(readFileSync(cp));
     const w = Math.max(a.width, b.width);
-    const h = Math.max(a.height, b.height);
-    const A = pad(a, w, h);
-    const B = pad(b, w, h);
+    // Compare against the before page re-laid onto the after page's rows (see
+    // align.mjs), so content that only moved is not "changed". Positional
+    // comparison remains the fallback when the pages are too different.
+    const aW = pad(a, w, a.height);
+    const bW = pad(b, w, b.height);
+    const al = alignRows(aW, bW);
+    const h = al ? b.height : Math.max(a.height, b.height);
+    const A = al ? al.baseline : pad(a, w, h);
+    const B = al ? bW : pad(b, w, h);
     const diff = new PNG({ width: w, height: h });
     const pmOpts = { threshold: PXTHRESH, alpha: DIFF_ALPHA, diffColor: HILITE };
-    const n = pixelmatch(A.data, B.data, diff.data, w, h, pmOpts);
+    // Removed rows leave no differing after pixel; count them so a pure
+    // removal still registers as a change.
+    const n = pixelmatch(A.data, B.data, diff.data, w, h, pmOpts) + (al ? al.removedRows * w : 0);
     if (n > MINPIX) {
       // Crop before/after/diff to a tight box around the change (+ margin) so a
       // one-line edit doesn't post a full-page-tall screenshot. The second pass
       // costs one more comparison, and only on routes that actually changed.
-      const { mask, box } = changedMask(A, B, w, h, pmOpts);
+      const { mask: pixelMask } = changedMask(A, B, w, h, pmOpts);
+      // Each cluster of changed rows gets its own ring and crop, removal seams
+      // included (regions.mjs): one box around a header edit and a footer edit
+      // is the whole page.
+      const { mask, regions } = changeRegions(A, B, pixelMask, al ? al.removedAt : [], w, h, MINPIX);
       paint(diff, dilate(mask, w, h, DILATE), w, h, HILITE);
       // Snap to quiet seams of the after image so the ring lands in whitespace.
       // Pad by exactly the stroke width: the stroke band then sits just OUTSIDE
@@ -221,28 +257,52 @@ for (const r of common) {
       // seams outward from the inflated bounds, so the ring keeps its distance
       // even when a qualifying seam hugs the changed pixels. (At image bounds
       // the gap collapses by policy — see inflateBox.)
-      const snapped = snapBox(B, inflateBox(box, BOX_GAP, w, h), w, h, BOX_STROKE);
-      // A shorter after-page is padded with background below its real content,
-      // and every row of that tail "differs" from the before content — which
-      // would drag the ring and the crop down across a void (owner feedback on
-      // mtl-hockey#4's register hero). Clamp to the after page's real content;
-      // the panes' differing lengths already tell the page-got-shorter story.
-      // When the after page is the taller one, the tail is genuinely new
-      // content and stays ringed.
-      if (snapped.minY < b.height && snapped.maxY >= b.height) {
-        snapped.maxY = b.height - 1;
+      const boxes = regions.map((region) => {
+        const snapped = snapBox(B, inflateBox(region, BOX_GAP, w, h), w, h, BOX_STROKE);
+        // A shorter after-page is padded with background below its real
+        // content, and every row of that tail "differs" from the before content
+        // — which would drag the ring and the crop down across a void (owner
+        // feedback on mtl-hockey#4's register hero). Clamp to the after page's
+        // real content; the panes' differing lengths already tell the
+        // page-got-shorter story. When the after page is the taller one, the
+        // tail is genuinely new content and stays ringed.
+        if (snapped.minY < b.height && snapped.maxY >= b.height) {
+          snapped.maxY = b.height - 1;
+        }
+        return snapped;
+      });
+      if (boxes.length === 0) continue;
+      const marked = new PNG({ width: w, height: h });
+      PNG.bitblt(B, marked, 0, 0, w, h, 0, 0);
+      for (const snapped of boxes) ringBox(marked, snapped, w, h, BOX_STROKE, HILITE, BOX_STROKE);
+      const parts = { hero: [], marked: [], before: [], after: [], diff: [] };
+      for (const snapped of boxes) {
+        // With alignment, the before pane is cut from the real before page over
+        // the rows the boxed region came from — not from the aligned baseline,
+        // whose inserted stretches are blank filler.
+        let beforeCrop;
+        if (al) {
+          const [aTop, aBot] = al.beforeRange(snapped.minY, snapped.maxY);
+          beforeCrop = cropTo(aW, { minX: snapped.minX, maxX: snapped.maxX, minY: aTop, maxY: aBot },
+            CROP_MARGIN, w, a.height);
+        } else {
+          beforeCrop = cropTo(A, snapped, CROP_MARGIN, w, h);
+        }
+        const markedCrop = cropTo(marked, snapped, CROP_MARGIN, w, h);
+        parts.hero.push(compositePanes(beforeCrop, markedCrop));
+        parts.marked.push(markedCrop);
+        parts.before.push(beforeCrop);
+        parts.after.push(cropTo(B, snapped, CROP_MARGIN, w, h));
+        parts.diff.push(cropTo(diff, snapped, CROP_MARGIN, w, h));
       }
-      const marked = markBox(B, snapped, w, h, BOX_STROKE, HILITE, BOX_STROKE);
-      const beforeCrop = cropTo(A, snapped, CROP_MARGIN, w, h);
-      const markedCrop = cropTo(marked, snapped, CROP_MARGIN, w, h);
       routeArts.set(vp, {
-        hero: PNG.sync.write(compositePanes(beforeCrop, markedCrop)),
-        marked: PNG.sync.write(markedCrop),
-        before: PNG.sync.write(beforeCrop),
-        after: PNG.sync.write(cropTo(B, snapped, CROP_MARGIN, w, h)),
-        diff: PNG.sync.write(cropTo(diff, snapped, CROP_MARGIN, w, h)),
+        hero: PNG.sync.write(stackRegions(parts.hero)),
+        marked: PNG.sync.write(stackRegions(parts.marked)),
+        before: PNG.sync.write(stackRegions(parts.before)),
+        after: PNG.sync.write(stackRegions(parts.after)),
+        diff: PNG.sync.write(stackRegions(parts.diff)),
         changedPx: n,
-        key: regionKey(A, B, snapped),
+        key: boxes.map((snapped) => regionKey(A, B, snapped)).join(';'),
       });
     }
   }
