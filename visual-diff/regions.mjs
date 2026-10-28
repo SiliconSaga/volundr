@@ -147,7 +147,12 @@ export function splitRegions(mask, w, h, gap = REGION_GAP, maxRegions = MAX_REGI
     }
   }
   let regions = [];
-  for (const piece of bands.flatMap((band) => piecesOf(mask, w, band))) {
+  // Pieces come out of a band in column order; grouping walks them top to
+  // bottom, so sort first. Unsorted, a lower piece on the left preceded a
+  // higher one on the right, the row gap went negative, and two edits far
+  // apart merged into one page-tall ring.
+  const pieces = bands.flatMap((band) => piecesOf(mask, w, band)).sort((p, q) => p.minY - q.minY);
+  for (const piece of pieces) {
     const { count, ...box } = piece;
     if (!keep(box)) continue;
     const last = regions[regions.length - 1];
