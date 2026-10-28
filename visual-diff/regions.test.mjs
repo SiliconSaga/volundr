@@ -86,6 +86,14 @@ test('a seam keeps its region even when the pixels around it look like shift noi
   assert.equal(changeRegions(before, after, pm, [12], 20, 20, 5).regions.length, 1, 'with a seam it stays');
 });
 
+test('regions are judged before the cap merges them', () => {
+  // Four regions, cap 3: the two closest (400 and 590) would merge. Dropping
+  // the one at 590 first must leave the one at 400 standing on its own.
+  const spans = [[0, 0], [200, 200], [400, 400], [590, 590]].map(([a, b]) => [a, b, 0, 0]);
+  const r = splitRegions(mask(spans), W, H, 160, 3, 0, (box) => box.minY !== 590);
+  assert.deepEqual(r.map((x) => [x.minY, x.maxY]), [[0, 0], [200, 200], [400, 400]]);
+});
+
 test('past the cap, the closest neighbours merge first', () => {
   const spans = [[0, 0], [200, 200], [400, 400], [590, 590]].map(([a, b]) => [a, b, 0, 0]);
   const r = splitRegions(mask(spans), W, H, 160, 3);

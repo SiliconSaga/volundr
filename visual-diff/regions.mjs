@@ -77,13 +77,16 @@ export function changeRegions(before, after, pixelMask, seams, w, h, minPix) {
     for (let y = y0; y <= y1; y++) mask.fill(1, y * w, (y + 1) * w);
     return [y0, y1];
   });
-  const regions = splitRegions(mask, w, h, REGION_GAP, MAX_REGIONS, minPix).filter((r) =>
+  const regions = splitRegions(mask, w, h, REGION_GAP, MAX_REGIONS, minPix, (r) =>
     seamRows.some(([y0, y1]) => y1 >= r.minY && y0 <= r.maxY)
     || !isShiftNoise(before, after, pixelMask, w, h, r));
   return { mask, regions };
 }
 
-export function splitRegions(mask, w, h, gap = REGION_GAP, maxRegions = MAX_REGIONS, minPix = 0) {
+// `keep` judges each region on its own, BEFORE the MAX_REGIONS cap merges
+// neighbours: merged first, a small real edit could ride along inside a big
+// shift-noise box and be dropped with it.
+export function splitRegions(mask, w, h, gap = REGION_GAP, maxRegions = MAX_REGIONS, minPix = 0, keep = () => true) {
   let regions = [];
   let cur = null;
   for (let y = 0; y < h; y++) {
@@ -105,7 +108,7 @@ export function splitRegions(mask, w, h, gap = REGION_GAP, maxRegions = MAX_REGI
       regions.push(cur);
     }
   }
-  regions = regions.filter((r) => r.count > minPix).map(({ count, ...box }) => box);
+  regions = regions.filter((r) => r.count > minPix).map(({ count, ...box }) => box).filter(keep);
   while (regions.length > maxRegions) {
     let at = 0;
     for (let i = 1; i < regions.length - 1; i++) {
