@@ -86,6 +86,20 @@ test('a seam keeps its region even when the pixels around it look like shift noi
   assert.equal(changeRegions(before, after, pm, [12], 20, 20, 5).regions.length, 1, 'with a seam it stays');
 });
 
+test('a real edit near shift noise is judged on its own, not with the noise', () => {
+  // Noise band at 100-130, real edit at 200-210: within REGION_GAP of each
+  // other, so they would group — but the noise is dropped first.
+  const r = splitRegions(mask([[100, 130, 0, 49], [200, 210, 10, 20]]), W, H, 160, 6, 50,
+    (box) => box.minY !== 100);
+  assert.deepEqual(r, [{ minX: 10, minY: 200, maxX: 20, maxY: 210 }]);
+});
+
+test('the pixel floor applies to a grouped region, not to each band', () => {
+  // Three 30-pixel bands 40 rows apart: each under the floor of 50, together over it.
+  const r = splitRegions(mask([[100, 102, 0, 9], [140, 142, 0, 9], [180, 182, 0, 9]]), W, H, 160, 6, 50);
+  assert.deepEqual(r, [{ minX: 0, minY: 100, maxX: 9, maxY: 182 }]);
+});
+
 test('regions are judged before the cap merges them', () => {
   // Four regions, cap 3: the two closest (400 and 590) would merge. Dropping
   // the one at 590 first must leave the one at 400 standing on its own.

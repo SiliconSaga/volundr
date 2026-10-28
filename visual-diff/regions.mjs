@@ -9,6 +9,10 @@ export const REGION_GAP = 160;
 // Beyond this many regions the nearest neighbours merge: a page with dozens
 // of scattered edits gets a few readable crops, not a scroll of slivers.
 export const MAX_REGIONS = 6;
+// Changed rows this close form one BAND: the unit `keep` judges, before any
+// grouping by REGION_GAP. A band is one tight run — a text line, an image —
+// so a real edit is never judged together with shift noise 100px away.
+export const BAND_GAP = 2;
 
 // Regions with no more than `minPix` changed pixels are dropped: the page-level
 // noise floor (diff.mjs MINPIX) applied per region, so a stray anti-aliased
@@ -83,11 +87,13 @@ export function changeRegions(before, after, pixelMask, seams, w, h, minPix) {
   return { mask, regions };
 }
 
-// `keep` judges each region on its own, BEFORE the MAX_REGIONS cap merges
-// neighbours: merged first, a small real edit could ride along inside a big
-// shift-noise box and be dropped with it.
+// `keep` judges each band on its own, BEFORE bands group into regions and
+// before the MAX_REGIONS cap merges neighbours: merged first, a small real
+// edit could ride along inside a big shift-noise box and be dropped with it.
+// The pixel floor applies to the grouped region, so an edit spread over a few
+// small bands (a short word, a moved period) still counts as a whole.
 export function splitRegions(mask, w, h, gap = REGION_GAP, maxRegions = MAX_REGIONS, minPix = 0, keep = () => true) {
-  let regions = [];
+  const bands = [];
   let cur = null;
   for (let y = 0; y < h; y++) {
     let x0 = -1, x1 = -1, count = 0;
@@ -98,17 +104,31 @@ export function splitRegions(mask, w, h, gap = REGION_GAP, maxRegions = MAX_REGI
       count++;
     }
     if (x0 < 0) continue;
-    if (cur && y - cur.maxY <= gap) {
+    if (cur && y - cur.maxY <= BAND_GAP) {
       cur.maxY = y;
       cur.minX = Math.min(cur.minX, x0);
       cur.maxX = Math.max(cur.maxX, x1);
       cur.count += count;
     } else {
       cur = { minX: x0, minY: y, maxX: x1, maxY: y, count };
-      regions.push(cur);
+      bands.push(cur);
     }
   }
-  regions = regions.filter((r) => r.count > minPix).map(({ count, ...box }) => box).filter(keep);
+  let regions = [];
+  for (const band of bands) {
+    const { count, ...box } = band;
+    if (!keep(box)) continue;
+    const last = regions[regions.length - 1];
+    if (last && band.minY - last.maxY <= gap) {
+      last.maxY = band.maxY;
+      last.minX = Math.min(last.minX, band.minX);
+      last.maxX = Math.max(last.maxX, band.maxX);
+      last.count += count;
+    } else {
+      regions.push({ ...band });
+    }
+  }
+  regions = regions.filter((r) => r.count > minPix).map(({ count, ...box }) => box);
   while (regions.length > maxRegions) {
     let at = 0;
     for (let i = 1; i < regions.length - 1; i++) {

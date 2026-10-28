@@ -111,6 +111,24 @@ test('rows replaced in place stay one hunk compared against what they replaced',
   assert.deepEqual(changedRows(al.baseline, page(after)), [40, 41, 42, 44, 45]);
 });
 
+test('a row removed next to a row inserted compares the new row with the old one', () => {
+  // Before ..., R, M, ...  after ..., M, I, ...: Myers removes R and inserts
+  // I around the matched M; coalesced, I must still be judged against R.
+  const after = [...body.slice(0, 30), body[31], 1, ...body.slice(32)];
+  const al = alignRows(page(body), page(after));
+  assert.equal(al.hunks.length, 1);
+  assert.deepEqual(al.removedAt, []);
+  assert.deepEqual(changedRows(al.baseline, page(after)), [31]);
+});
+
+test('more rows removed than inserted in one hunk leaves a seam for the rest', () => {
+  // Before ..., R1, R2, M, ...  after ..., M, I, ...
+  const after = [...body.slice(0, 30), body[32], 1, ...body.slice(33)];
+  const al = alignRows(page(body), page(after));
+  assert.equal(al.removedRows, 1);
+  assert.deepEqual(al.removedAt, [32]);
+});
+
 test('pages too different to align return null', () => {
   const other = body.map((s) => (s + 1) % 251);
   assert.equal(alignRows(page(body), page(other), 10), null);

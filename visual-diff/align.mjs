@@ -167,15 +167,27 @@ export function alignRows(before, after, maxD = MAX_EDIT_ROWS) {
       bMatch[j] = Math.min(n - 1, Math.max(0, Math.min(hk.aStart + (j - hk.bStart), hk.aEnd - 1)));
     }
   }
+  // Within a hunk, the unmatched before rows and unmatched after rows pair up
+  // in order, so a replaced row is compared with the row it replaced. A
+  // coalesced hunk also holds matched rows, which keep their own copy and stay
+  // out of the pairing. Unpaired after rows are new content (white filler
+  // underneath); unpaired before rows were removed, and get a seam right after
+  // the last paired after row — they have no after pixel of their own.
+  const aMatched = new Uint8Array(n);
+  for (const [i] of pairs) aMatched[i] = 1;
   const removedAt = [];
   let removedRows = 0;
   hunks.forEach((hk, idx) => {
-    for (let t = 0; t < hk.bEnd - hk.bStart; t++) {
-      bHunk[hk.bStart + t] = idx;
-      // A coalesced hunk can hold matched rows; those keep their own copy.
-      if (bMatch[hk.bStart + t] < 0 && hk.aStart + t < hk.aEnd) copyRow(hk.aStart + t, hk.bStart + t);
+    for (let j = hk.bStart; j < hk.bEnd; j++) bHunk[j] = idx;
+    const ua = [], ub = [];
+    for (let i = hk.aStart; i < hk.aEnd; i++) if (!aMatched[i]) ua.push(i);
+    for (let j = hk.bStart; j < hk.bEnd; j++) if (bMatch[j] < 0) ub.push(j);
+    const paired = Math.min(ua.length, ub.length);
+    for (let k = 0; k < paired; k++) copyRow(ua[k], ub[k]);
+    if (ua.length > paired) {
+      removedAt.push(paired ? ub[paired - 1] + 1 : hk.bStart);
+      removedRows += ua.length - paired;
     }
-    if (hk.bStart === hk.bEnd) { removedAt.push(hk.bStart); removedRows += hk.aEnd - hk.aStart; }
   });
   const beforeRange = (minY, maxY) => {
     const top = bMatch[minY] >= 0 ? bMatch[minY] : hunks[bHunk[minY]].aStart;
