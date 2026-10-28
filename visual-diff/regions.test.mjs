@@ -119,6 +119,18 @@ test('a real edit beside shift noise in the same rows keeps its ring', () => {
   assert.equal(regions[0].minX, 80, 'only the recoloured bar is ringed');
 });
 
+test('pieces of one tall band group top to bottom, not left to right', () => {
+  // One band (rows 0-999 joined by a dropped noise column at x 100), with a
+  // real edit low on the left and another high on the right, 800 rows apart.
+  const W2 = 200;
+  const m = new Uint8Array(W2 * H);
+  for (const [y0, y1, x0, x1] of [[0, 999, 100, 100], [900, 920, 0, 5], [100, 120, 190, 199]]) {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) m[y * W2 + x] = 1;
+  }
+  const r = splitRegions(m, W2, H, 160, 6, 50, (box) => box.minX !== 100);
+  assert.deepEqual(r.map((x) => [x.minY, x.maxY]), [[100, 120], [900, 920]]);
+});
+
 test('the pixel floor applies to a grouped region, not to each band', () => {
   // Three 30-pixel bands 40 rows apart: each under the floor of 50, together over it.
   const r = splitRegions(mask([[100, 102, 0, 9], [140, 142, 0, 9], [180, 182, 0, 9]]), W, H, 160, 6, 50);
