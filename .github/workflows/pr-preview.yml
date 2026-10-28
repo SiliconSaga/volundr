@@ -260,7 +260,7 @@ jobs:
         if: steps.state.outputs.state == 'open'
         run: |
           set -euo pipefail
-          ruby .volundr/visual-diff/ci-config.rb _config.yml .volundr/visual-diff/_config.pr.yml
+          bundle exec ruby .volundr/visual-diff/ci-config.rb _config.yml .volundr/visual-diff/_config.pr.yml
           bundle exec jekyll build --baseurl "" \
             --config _config.yml,.volundr/visual-diff/_config.pr.yml \
             --destination _site_pr
@@ -280,7 +280,7 @@ jobs:
           set -euo pipefail
           # Build main's source with THIS bundle (identical pinned gems) and the
           # shared overlay, so baseline works regardless of main's own state.
-          ruby .volundr/visual-diff/ci-config.rb baseline/_config.yml .volundr/visual-diff/_config.main.yml
+          bundle exec ruby .volundr/visual-diff/ci-config.rb baseline/_config.yml .volundr/visual-diff/_config.main.yml
           bundle exec jekyll build --source baseline --baseurl "" \
             --config baseline/_config.yml,.volundr/visual-diff/_config.main.yml \
             --destination _site_main
