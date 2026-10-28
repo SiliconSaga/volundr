@@ -10,7 +10,7 @@ import { san } from './slug.mjs';
 import { snapBox, inflateBox } from './snap.mjs';
 import { regionKey } from './group.mjs';
 import { alignRows } from './align.mjs';
-import { splitRegions, isShiftNoise } from './regions.mjs';
+import { changeRegions } from './regions.mjs';
 
 const [, , baseDir, candDir, pubDir, previewUrl] = process.argv;
 if (!baseDir || !candDir || !pubDir || !previewUrl) {
@@ -242,16 +242,12 @@ for (const r of common) {
       // Crop before/after/diff to a tight box around the change (+ margin) so a
       // one-line edit doesn't post a full-page-tall screenshot. The second pass
       // costs one more comparison, and only on routes that actually changed.
-      const { mask } = changedMask(A, B, w, h, pmOpts);
-      // Mark each removal seam across the full width (removed rows were
-      // full-width rows) so a ring points at where content disappeared.
-      for (const at of al ? al.removedAt : []) {
-        const y1 = Math.min(at, h - 1), y0 = Math.max(0, y1 - 1);
-        for (let y = y0; y <= y1; y++) mask.fill(1, y * w, (y + 1) * w);
-      }
+      const { mask: pixelMask } = changedMask(A, B, w, h, pmOpts);
+      // Each cluster of changed rows gets its own ring and crop, removal seams
+      // included (regions.mjs): one box around a header edit and a footer edit
+      // is the whole page.
+      const { mask, regions } = changeRegions(A, B, pixelMask, al ? al.removedAt : [], w, h, MINPIX);
       paint(diff, dilate(mask, w, h, DILATE), w, h, HILITE);
-      // Each cluster of changed rows gets its own ring and crop (regions.mjs):
-      // one box around a header edit and a footer edit is the whole page.
       // Snap to quiet seams of the after image so the ring lands in whitespace.
       // Pad by exactly the stroke width: the stroke band then sits just OUTSIDE
       // the snapped bounds — inside the seam, touching neither the ringed text
@@ -261,9 +257,7 @@ for (const r of common) {
       // seams outward from the inflated bounds, so the ring keeps its distance
       // even when a qualifying seam hugs the changed pixels. (At image bounds
       // the gap collapses by policy — see inflateBox.)
-      const boxes = splitRegions(mask, w, h, undefined, undefined, MINPIX)
-        .filter((region) => !isShiftNoise(A, B, mask, w, h, region))
-        .map((region) => {
+      const boxes = regions.map((region) => {
         const snapped = snapBox(B, inflateBox(region, BOX_GAP, w, h), w, h, BOX_STROKE);
         // A shorter after-page is padded with background below its real
         // content, and every row of that tail "differs" from the before content

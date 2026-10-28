@@ -64,6 +64,25 @@ export function isShiftNoise(before, after, mask, w, h, box, share = SHIFT_NOISE
   return unexplainedByShift(before, after, mask, w, h, box) <= share * maskCount(mask, w, box);
 }
 
+// The regions to ring, from pixelmatch's mask plus the rows where content was
+// removed outright (align.mjs removedAt). Returns the mask with each removal
+// seam marked across the full width — removed rows were full-width rows —
+// and the region boxes. A region holding a seam always stays: the seam is a
+// real change with no differing after pixel, so the shift-noise test, which
+// judges only pixelmatch's own pixels, must not be able to explain it away.
+export function changeRegions(before, after, pixelMask, seams, w, h, minPix) {
+  const mask = pixelMask.slice();
+  const seamRows = seams.map((at) => {
+    const y1 = Math.min(at, h - 1), y0 = Math.max(0, y1 - 1);
+    for (let y = y0; y <= y1; y++) mask.fill(1, y * w, (y + 1) * w);
+    return [y0, y1];
+  });
+  const regions = splitRegions(mask, w, h, REGION_GAP, MAX_REGIONS, minPix).filter((r) =>
+    seamRows.some(([y0, y1]) => y1 >= r.minY && y0 <= r.maxY)
+    || !isShiftNoise(before, after, pixelMask, w, h, r));
+  return { mask, regions };
+}
+
 export function splitRegions(mask, w, h, gap = REGION_GAP, maxRegions = MAX_REGIONS, minPix = 0) {
   let regions = [];
   let cur = null;

@@ -83,6 +83,15 @@ test('a gap one row taller is spacing, not a change', () => {
   assert.deepEqual(changedRows(al.baseline, page(after)), []);
 });
 
+test('a new 2px rule is content, not spacing', () => {
+  // Two identical new rows repeat each other, but not the rows around them.
+  // Shade 1 never occurs in `body` (37y ≡ 1 mod 251 needs y = 95).
+  const after = [...body.slice(0, 30), 1, 1, ...body.slice(30)];
+  const al = alignRows(page(body), page(after));
+  assert.equal(al.hunks.length, 1);
+  assert.deepEqual(changedRows(al.baseline, page(after)), [30, 31]);
+});
+
 test('a solid band growing past the spacing limit is still a change', () => {
   const before = [...body.slice(0, 30), 7, 7, ...body.slice(30)];
   const after = [...body.slice(0, 30), 7, 7, 7, 7, 7, 7, 7, ...body.slice(30)];

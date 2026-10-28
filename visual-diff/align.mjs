@@ -140,9 +140,12 @@ export function alignRows(before, after, maxD = MAX_EDIT_ROWS) {
   const ha = rowHashes(before), hb = rowHashes(after);
   const pairs = matchRows(ha, hb, maxD);
   if (!pairs) return null;
+  // Every hunk row must continue the run just OUTSIDE the hunk. Matching a
+  // row of the hunk itself is not enough: a new 2px rule is two identical
+  // rows, and it is content, not a wider gap.
   const repeats = (hs, from, to) => {
     for (let i = from; i < to; i++) {
-      if (!((i > 0 && hs[i] === hs[i - 1]) || (i + 1 < hs.length && hs[i] === hs[i + 1]))) return false;
+      if (!((from > 0 && hs[i] === hs[from - 1]) || (to < hs.length && hs[i] === hs[to]))) return false;
     }
     return true;
   };

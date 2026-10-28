@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PNG } from 'pngjs';
-import { splitRegions, isShiftNoise } from './regions.mjs';
+import { splitRegions, isShiftNoise, changeRegions } from './regions.mjs';
 
 const W = 50, H = 1000;
 
@@ -67,6 +67,23 @@ test('a bar recoloured is a real change, not shift noise', () => {
   const before = bars((y) => (y >= 7 && y < 13 ? 20 : 240));
   const after = bars((y) => (y >= 7 && y < 13 ? 200 : 240));
   assert.ok(!isShiftNoise(before, after, diffMask(before, after), 20, 20, BAR));
+});
+
+test('a removed section gets a ring though no after pixel differs', () => {
+  // Pure removal: pixelmatch saw nothing, the seam is the whole story.
+  const flat = bars(() => 240);
+  const { mask, regions } = changeRegions(flat, flat, new Uint8Array(400), [10], 20, 20, 5);
+  assert.equal(regions.length, 1);
+  assert.ok(regions[0].minY <= 10 && regions[0].maxY >= 9);
+  assert.equal(mask[10 * 20], 1, 'the seam is marked in the returned mask');
+});
+
+test('a seam keeps its region even when the pixels around it look like shift noise', () => {
+  const before = bars((y) => (y >= 7 && y < 13 ? 20 : 240));
+  const after = bars((y) => (y === 7 || y === 13 ? 130 : y > 7 && y < 13 ? 20 : 240));
+  const pm = diffMask(before, after);
+  assert.equal(changeRegions(before, after, pm, [], 20, 20, 5).regions.length, 0, 'shift noise alone is dropped');
+  assert.equal(changeRegions(before, after, pm, [12], 20, 20, 5).regions.length, 1, 'with a seam it stays');
 });
 
 test('past the cap, the closest neighbours merge first', () => {
