@@ -94,6 +94,31 @@ test('a real edit near shift noise is judged on its own, not with the noise', ()
   assert.deepEqual(r, [{ minX: 10, minY: 200, maxX: 20, maxY: 210 }]);
 });
 
+test('a real edit beside shift noise in the same rows keeps its ring', () => {
+  // 120 wide: a bar at x 0-39 moves half a pixel (noise), a bar at x 80-119
+  // is recoloured (real). Same rows, so one band — judged as two pieces.
+  const make = (left, right) => {
+    const png = new PNG({ width: 120, height: 20 });
+    for (let y = 0; y < 20; y++) {
+      for (let x = 0; x < 120; x++) {
+        const i = (y * 120 + x) * 4;
+        const v = x < 40 ? left(y) : x >= 80 ? right(y) : 240;
+        png.data[i] = png.data[i + 1] = png.data[i + 2] = v; png.data[i + 3] = 255;
+      }
+    }
+    return png;
+  };
+  const bar = (y) => (y >= 7 && y < 13 ? 20 : 240);
+  const before = make(bar, bar);
+  const after = make((y) => (y === 7 || y === 13 ? 130 : y > 7 && y < 13 ? 20 : 240),
+    (y) => (y >= 7 && y < 13 ? 200 : 240));
+  const pm = new Uint8Array(120 * 20);
+  for (let p = 0; p < pm.length; p++) pm[p] = before.data[p * 4] !== after.data[p * 4] ? 1 : 0;
+  const { regions } = changeRegions(before, after, pm, [], 120, 20, 5);
+  assert.equal(regions.length, 1);
+  assert.equal(regions[0].minX, 80, 'only the recoloured bar is ringed');
+});
+
 test('the pixel floor applies to a grouped region, not to each band', () => {
   // Three 30-pixel bands 40 rows apart: each under the floor of 50, together over it.
   const r = splitRegions(mask([[100, 102, 0, 9], [140, 142, 0, 9], [180, 182, 0, 9]]), W, H, 160, 6, 50);

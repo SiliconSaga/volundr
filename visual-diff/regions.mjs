@@ -87,7 +87,39 @@ export function changeRegions(before, after, pixelMask, seams, w, h, minPix) {
   return { mask, regions };
 }
 
-// `keep` judges each band on its own, BEFORE bands group into regions and
+// A band split at runs of at least PIECE_GAP empty columns, each piece with its
+// own tight box and count: a re-sampled logo on the left and an edited link on
+// the right of the same rows are judged apart, so the logo's explained pixels
+// cannot outvote the link's.
+export const PIECE_GAP = 24;
+
+function piecesOf(mask, w, band) {
+  const pieces = [];
+  let cur = null, empty = 0;
+  for (let x = band.minX; x <= band.maxX; x++) {
+    let y0 = -1, y1 = -1, count = 0;
+    for (let y = band.minY; y <= band.maxY; y++) {
+      if (!mask[y * w + x]) continue;
+      if (y0 < 0) y0 = y;
+      y1 = y;
+      count++;
+    }
+    if (y0 < 0) { empty++; continue; }
+    if (cur && empty < PIECE_GAP) {
+      cur.maxX = x;
+      cur.minY = Math.min(cur.minY, y0);
+      cur.maxY = Math.max(cur.maxY, y1);
+      cur.count += count;
+    } else {
+      cur = { minX: x, minY: y0, maxX: x, maxY: y1, count };
+      pieces.push(cur);
+    }
+    empty = 0;
+  }
+  return pieces;
+}
+
+// `keep` judges each band piece on its own, BEFORE pieces group into regions and
 // before the MAX_REGIONS cap merges neighbours: merged first, a small real
 // edit could ride along inside a big shift-noise box and be dropped with it.
 // The pixel floor applies to the grouped region, so an edit spread over a few
@@ -115,17 +147,18 @@ export function splitRegions(mask, w, h, gap = REGION_GAP, maxRegions = MAX_REGI
     }
   }
   let regions = [];
-  for (const band of bands) {
-    const { count, ...box } = band;
+  for (const piece of bands.flatMap((band) => piecesOf(mask, w, band))) {
+    const { count, ...box } = piece;
     if (!keep(box)) continue;
     const last = regions[regions.length - 1];
-    if (last && band.minY - last.maxY <= gap) {
-      last.maxY = band.maxY;
-      last.minX = Math.min(last.minX, band.minX);
-      last.maxX = Math.max(last.maxX, band.maxX);
+    if (last && piece.minY - last.maxY <= gap) {
+      last.minY = Math.min(last.minY, piece.minY);
+      last.maxY = Math.max(last.maxY, piece.maxY);
+      last.minX = Math.min(last.minX, piece.minX);
+      last.maxX = Math.max(last.maxX, piece.maxX);
       last.count += count;
     } else {
-      regions.push({ ...band });
+      regions.push({ ...piece });
     }
   }
   regions = regions.filter((r) => r.count > minPix).map(({ count, ...box }) => box);
