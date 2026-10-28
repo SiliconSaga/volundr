@@ -14,7 +14,7 @@ if (!siteDir || !outDir) { console.error('usage: shoot.mjs <siteDir> <outDir>');
 
 const sitemapPath = join(siteDir, 'sitemap.xml');
 if (!existsSync(sitemapPath)) {
-  console.error(`FATAL: ${sitemapPath} missing — enable jekyll-sitemap + url in _config.ci.yml.`);
+  console.error(`FATAL: ${sitemapPath} missing — enable jekyll-sitemap + url in _config.ci.yml (ci-config.rb carries both into the build overlay).`);
   process.exit(1);
 }
 const xml = await readFile(sitemapPath, 'utf8');

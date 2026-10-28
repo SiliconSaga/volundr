@@ -1,2 +1,5 @@
 # Local install of the visual-diff tooling deps (CI does its own npm ci).
 node_modules/
+# Per-build overlays ci-config.rb writes during the visual-diff job.
+visual-diff/_config.pr.yml
+visual-diff/_config.main.yml
