@@ -11,45 +11,57 @@ export const REGION_GAP = 160;
 export const MAX_REGIONS = 6;
 // Changed rows this close form one BAND: the unit `keep` judges, before any
 // grouping by REGION_GAP. A band is one tight run — a text line, an image —
-// so a real edit is never judged together with shift noise 100px away.
+// so a real edit is never judged together with render noise 100px away.
 export const BAND_GAP = 2;
 
-// Regions with no more than `minPix` changed pixels are dropped: the page-level
-// noise floor (diff.mjs MINPIX) applied per region, so a stray anti-aliased
-// glyph far from the real edit doesn't get a ring and a crop of its own.
-// Changed pixels in `box` that a sub-pixel VERTICAL move cannot explain. A
-// layout that shifts by a fraction of a pixel (a header 182.4px taller)
-// re-samples images and icons below it: each after pixel becomes a blend of
-// the before pixel and its neighbour on one side, and — the same move seen
-// backwards — each before pixel a blend of the after pixel and its neighbour
-// on the other side. A pixel is explained only when both hold, per channel;
-// requiring both keeps a genuinely different glyph from passing by chance.
-// (upac-site#2: footer logo and social icons ringed though nothing in the
-// footer changed.)
-export const SHIFT_TOLERANCE = 8;
-// A region is shift noise when no more than this share of its changed pixels
-// is unexplained. Measured on upac-site's about page: the shifted footer sat
-// at 17%; a swapped text line and a pasted-over word both at 98%.
-export const SHIFT_NOISE_SHARE = 0.5;
+// Render noise: content that re-rendered without changing. A layout shifted by
+// a fraction of a pixel (a header 182.4px taller) re-samples the photos,
+// icons and text below it, so pixelmatch flags them although nothing changed
+// to the eye (upac-site#2: a photo gallery, a button row, footer text). After
+// a small box blur those differences vanish, while a changed word or a
+// different image still differs plainly. Measured on upac-site#2 with a 7x7
+// blur and a tolerance of 32: re-rendered regions kept 0-1% of their changed
+// pixels, a swapped text line 33%, a pasted-over word 27%, a new header 100%.
+export const BLUR_RADIUS = 3;
+export const BLUR_TOLERANCE = 32;
+// A region is render noise when no more than this share of its changed pixels
+// still differs after the blur.
+export const RENDER_NOISE_SHARE = 0.1;
 
-export function unexplainedByShift(before, after, mask, w, h, box, tol = SHIFT_TOLERANCE) {
-  const between = (v, p, q) => v >= Math.min(p, q) - tol && v <= Math.max(p, q) + tol;
-  const blends = (img, i, other, j, k) => between(img.data[i], other.data[i], other.data[k])
-    && between(img.data[i + 1], other.data[i + 1], other.data[k + 1])
-    && between(img.data[i + 2], other.data[i + 2], other.data[k + 2]);
+// Box-blurred RGB lookup over `box` grown by `r`, from a summed-area table.
+function blurred(png, box, r) {
+  const { width: w, height: h } = png;
+  const x0 = Math.max(0, box.minX - r), y0 = Math.max(0, box.minY - r);
+  const x1 = Math.min(w - 1, box.maxX + r), y1 = Math.min(h - 1, box.maxY + r);
+  const W = x1 - x0 + 2, H = y1 - y0 + 2;
+  const sat = [new Float64Array(W * H), new Float64Array(W * H), new Float64Array(W * H)];
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = (y * w + x) * 4, at = (y - y0 + 1) * W + (x - x0 + 1);
+      for (let c = 0; c < 3; c++) {
+        const s = sat[c];
+        s[at] = png.data[i + c] + s[at - W] + s[at - 1] - s[at - W - 1];
+      }
+    }
+  }
+  return (x, y, c) => {
+    const ax = Math.max(x0, x - r) - x0, bx = Math.min(x1, x + r) - x0 + 1;
+    const ay = Math.max(y0, y - r) - y0, by = Math.min(y1, y + r) - y0 + 1;
+    const s = sat[c];
+    return (s[by * W + bx] - s[ay * W + bx] - s[by * W + ax] + s[ay * W + ax]) / ((bx - ax) * (by - ay));
+  };
+}
+
+// Changed pixels in `box` whose blurred before and after still differ.
+export function stillDifferAfterBlur(before, after, mask, w, box, r = BLUR_RADIUS, tol = BLUR_TOLERANCE) {
+  const ba = blurred(before, box, r), bb = blurred(after, box, r);
   let n = 0;
   for (let y = box.minY; y <= box.maxY; y++) {
     for (let x = box.minX; x <= box.maxX; x++) {
-      const p = y * w + x;
-      if (!mask[p]) continue;
-      const i = p * 4;
-      let explained = false;
-      for (const s of [-1, 1]) {
-        if (y + s < 0 || y + s >= h || y - s < 0 || y - s >= h) continue;
-        const fwd = ((y + s) * w + x) * 4, back = ((y - s) * w + x) * 4;
-        if (blends(after, i, before, i, fwd) && blends(before, i, after, i, back)) { explained = true; break; }
+      if (!mask[y * w + x]) continue;
+      for (let c = 0; c < 3; c++) {
+        if (Math.abs(ba(x, y, c) - bb(x, y, c)) > tol) { n++; break; }
       }
-      if (!explained) n++;
     }
   }
   return n;
@@ -64,15 +76,15 @@ export function maskCount(mask, w, box) {
   return n;
 }
 
-export function isShiftNoise(before, after, mask, w, h, box, share = SHIFT_NOISE_SHARE) {
-  return unexplainedByShift(before, after, mask, w, h, box) <= share * maskCount(mask, w, box);
+export function isRenderNoise(before, after, mask, w, box, share = RENDER_NOISE_SHARE) {
+  return stillDifferAfterBlur(before, after, mask, w, box) <= share * maskCount(mask, w, box);
 }
 
 // The regions to ring, from pixelmatch's mask plus the rows where content was
 // removed outright (align.mjs removedAt). Returns the mask with each removal
 // seam marked across the full width — removed rows were full-width rows —
 // and the region boxes. A region holding a seam always stays: the seam is a
-// real change with no differing after pixel, so the shift-noise test, which
+// real change with no differing after pixel, so the render-noise test, which
 // judges only pixelmatch's own pixels, must not be able to explain it away.
 export function changeRegions(before, after, pixelMask, seams, w, h, minPix) {
   const mask = pixelMask.slice();
@@ -83,7 +95,7 @@ export function changeRegions(before, after, pixelMask, seams, w, h, minPix) {
   });
   const regions = splitRegions(mask, w, h, REGION_GAP, MAX_REGIONS, minPix, (r) =>
     seamRows.some(([y0, y1]) => y1 >= r.minY && y0 <= r.maxY)
-    || !isShiftNoise(before, after, pixelMask, w, h, r));
+    || !isRenderNoise(before, after, pixelMask, w, r));
   return { mask, regions };
 }
 
@@ -121,7 +133,7 @@ function piecesOf(mask, w, band) {
 
 // `keep` judges each band piece on its own, BEFORE pieces group into regions and
 // before the MAX_REGIONS cap merges neighbours: merged first, a small real
-// edit could ride along inside a big shift-noise box and be dropped with it.
+// edit could ride along inside a big render-noise box and be dropped with it.
 // The pixel floor applies to the grouped region, so an edit spread over a few
 // small bands (a short word, a moved period) still counts as a whole.
 export function splitRegions(mask, w, h, gap = REGION_GAP, maxRegions = MAX_REGIONS, minPix = 0, keep = () => true) {

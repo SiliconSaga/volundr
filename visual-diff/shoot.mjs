@@ -71,6 +71,17 @@ try {
     for (const r of routes) {
       await page.goto(base + r, { waitUntil: 'networkidle' });
       await page.evaluate(() => document.fonts.ready);
+      // A full-page shot never scrolls, so loading="lazy" images below the fold
+      // may or may not have loaded — upac-site#2's home page lost a gallery
+      // image in one build and not the other. Load them all, eagerly, first;
+      // blocked third-party images settle through their error event.
+      await page.evaluate(() => Promise.all([...document.images].map((img) => {
+        img.loading = 'eager';
+        return img.complete ? null : new Promise((done) => {
+          img.addEventListener('load', done, { once: true });
+          img.addEventListener('error', done, { once: true });
+        });
+      })));
       await page.screenshot({
         path: join(outDir, `${san(r)}__${vp.name}.png`),
         fullPage: true,
