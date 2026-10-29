@@ -34,7 +34,11 @@ function blurred(png, box, r) {
   const x0 = Math.max(0, box.minX - r), y0 = Math.max(0, box.minY - r);
   const x1 = Math.min(w - 1, box.maxX + r), y1 = Math.min(h - 1, box.maxY + r);
   const W = x1 - x0 + 2, H = y1 - y0 + 2;
-  const sat = [new Float64Array(W * H), new Float64Array(W * H), new Float64Array(W * H)];
+  // Sums are exact non-negative integers: Uint32 holds them (half Float64's
+  // memory) unless the box is enormous. A page-tall box, as positional
+  // fallback can produce, would otherwise need ~370MB across the six tables.
+  const Table = 255 * W * H <= 0xffffffff ? Uint32Array : Float64Array;
+  const sat = [new Table(W * H), new Table(W * H), new Table(W * H)];
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       const i = (y * w + x) * 4, at = (y - y0 + 1) * W + (x - x0 + 1);

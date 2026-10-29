@@ -141,6 +141,15 @@ test('a dropped row that nearly repeats its neighbour is jitter, not a removal',
   assert.equal(al.removedRows, 0);
 });
 
+test('a purely removed row that resembles its seam row is jitter', () => {
+  // No replaced row in the hunk: the removal is judged on its pixels alone.
+  // Shade 124 sits within tolerance of body[30] (106), the row at the seam.
+  const before = [...body.slice(0, 30), 124, ...body.slice(30)];
+  const al = alignRows(page(before), page(body));
+  assert.deepEqual(al.removedAt, []);
+  assert.equal(al.removedRows, 0);
+});
+
 test('a removed 2px rule is still a removal', () => {
   const before = [...body.slice(0, 30), 1, 1, ...body.slice(30)];
   const al = alignRows(page(before), page(body));
