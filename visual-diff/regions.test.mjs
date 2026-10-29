@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PNG } from 'pngjs';
-import { splitRegions, isShiftNoise, changeRegions } from './regions.mjs';
+import { splitRegions, isRenderNoise, changeRegions } from './regions.mjs';
 
 const W = 50, H = 1000;
 
@@ -56,17 +56,17 @@ const diffMask = (a, b) => {
 };
 const BAR = { minX: 0, minY: 0, maxX: 19, maxY: 19 };
 
-test('a bar moved by half a pixel is shift noise', () => {
+test('a bar moved by half a pixel is render noise', () => {
   const before = bars((y) => (y >= 7 && y < 13 ? 20 : 240));
   // Half a pixel down: the top and bottom edge rows become 50/50 blends.
   const after = bars((y) => (y === 7 || y === 13 ? 130 : y > 7 && y < 13 ? 20 : 240));
-  assert.ok(isShiftNoise(before, after, diffMask(before, after), 20, 20, BAR));
+  assert.ok(isRenderNoise(before, after, diffMask(before, after), 20, BAR));
 });
 
-test('a bar recoloured is a real change, not shift noise', () => {
+test('a bar recoloured is a real change, not render noise', () => {
   const before = bars((y) => (y >= 7 && y < 13 ? 20 : 240));
   const after = bars((y) => (y >= 7 && y < 13 ? 200 : 240));
-  assert.ok(!isShiftNoise(before, after, diffMask(before, after), 20, 20, BAR));
+  assert.ok(!isRenderNoise(before, after, diffMask(before, after), 20, BAR));
 });
 
 test('a removed section gets a ring though no after pixel differs', () => {
@@ -78,15 +78,15 @@ test('a removed section gets a ring though no after pixel differs', () => {
   assert.equal(mask[10 * 20], 1, 'the seam is marked in the returned mask');
 });
 
-test('a seam keeps its region even when the pixels around it look like shift noise', () => {
+test('a seam keeps its region even when the pixels around it look like render noise', () => {
   const before = bars((y) => (y >= 7 && y < 13 ? 20 : 240));
   const after = bars((y) => (y === 7 || y === 13 ? 130 : y > 7 && y < 13 ? 20 : 240));
   const pm = diffMask(before, after);
-  assert.equal(changeRegions(before, after, pm, [], 20, 20, 5).regions.length, 0, 'shift noise alone is dropped');
+  assert.equal(changeRegions(before, after, pm, [], 20, 20, 5).regions.length, 0, 'render noise alone is dropped');
   assert.equal(changeRegions(before, after, pm, [12], 20, 20, 5).regions.length, 1, 'with a seam it stays');
 });
 
-test('a real edit near shift noise is judged on its own, not with the noise', () => {
+test('a real edit near render noise is judged on its own, not with the noise', () => {
   // Noise band at 100-130, real edit at 200-210: within REGION_GAP of each
   // other, so they would group — but the noise is dropped first.
   const r = splitRegions(mask([[100, 130, 0, 49], [200, 210, 10, 20]]), W, H, 160, 6, 50,
@@ -94,7 +94,7 @@ test('a real edit near shift noise is judged on its own, not with the noise', ()
   assert.deepEqual(r, [{ minX: 10, minY: 200, maxX: 20, maxY: 210 }]);
 });
 
-test('a real edit beside shift noise in the same rows keeps its ring', () => {
+test('a real edit beside render noise in the same rows keeps its ring', () => {
   // 120 wide: a bar at x 0-39 moves half a pixel (noise), a bar at x 80-119
   // is recoloured (real). Same rows, so one band — judged as two pieces.
   const make = (left, right) => {

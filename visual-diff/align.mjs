@@ -17,7 +17,11 @@ import { PNG } from 'pngjs';
 // Past this many inserted+deleted rows the pages are too different for
 // alignment to mean anything; the caller falls back to positional comparison.
 // It also bounds the backtrack trace, which grows with the square of it.
-export const MAX_EDIT_ROWS = 2000;
+// 2000 proved too tight: upac-site#2's home page (5330 rows, a 182px taller
+// header plus several blocks re-rendered in place) needed just over it and
+// fell back to whole-page positional comparison. 5000 aligns it in ~250ms;
+// the trace costs about 100MB at the limit, fine for a CI runner.
+export const MAX_EDIT_ROWS = 5000;
 // A hunk this short on both sides whose rows each repeat a neighbouring row is
 // spacing, not content: a fractional layout offset nudges a blank row from one
 // paragraph gap to another. Taller runs stay changes — a solid band growing
@@ -25,6 +29,10 @@ export const MAX_EDIT_ROWS = 2000;
 export const SPACING_ROWS = 3;
 // Hunks this close (in matched rows) merge into one replacement; see hunksFrom.
 export const COALESCE_ROWS = 8;
+// A removed row "resembles" an after row when no more than JITTER_SHARE of its
+// pixels differ by more than JITTER_TOLERANCE in any channel; see isJitter.
+export const JITTER_TOLERANCE = 32;
+export const JITTER_SHARE = 0.1;
 
 export function rowHashes(png) {
   const stride = png.width * 4;
@@ -175,6 +183,28 @@ export function alignRows(before, after, maxD = MAX_EDIT_ROWS) {
   // the last paired after row — they have no after pixel of their own.
   const aMatched = new Uint8Array(n);
   for (const [i] of pairs) aMatched[i] = 1;
+  // A removal of at most SPACING_ROWS rows, each of which looks like the after
+  // row at its seam (or the one above), is layout jitter: a block re-rendered
+  // a fraction of a pixel off drops a row that its neighbour duplicates
+  // closely but not exactly — upac-site#2's photo gallery. A removed 2px rule
+  // looks nothing like the background around it and stays a removal.
+  const resembles = (i, j) => {
+    if (j < 0 || j >= m) return false;
+    let off = 0;
+    for (let x = 0; x < w; x++) {
+      const p = i * stride + x * 4, q = j * stride + x * 4;
+      if (Math.abs(before.data[p] - after.data[q]) > JITTER_TOLERANCE
+        || Math.abs(before.data[p + 1] - after.data[q + 1]) > JITTER_TOLERANCE
+        || Math.abs(before.data[p + 2] - after.data[q + 2]) > JITTER_TOLERANCE) off++;
+    }
+    return off <= JITTER_SHARE * w;
+  };
+  // In a hunk that also replaced rows, a 1-3 row surplus is the re-rendered
+  // block coming out a little shorter (upac-site#2's footer logo card); the
+  // replaced rows themselves are judged on their pixels, so the surplus needs
+  // no seam. A pure removal has nothing else to show, so it must resemble.
+  const isJitter = (rows, at, replaced) => rows.length <= SPACING_ROWS
+    && (replaced || rows.every((i) => resembles(i, at) || resembles(i, at - 1)));
   const removedAt = [];
   let removedRows = 0;
   hunks.forEach((hk, idx) => {
@@ -185,8 +215,12 @@ export function alignRows(before, after, maxD = MAX_EDIT_ROWS) {
     const paired = Math.min(ua.length, ub.length);
     for (let k = 0; k < paired; k++) copyRow(ua[k], ub[k]);
     if (ua.length > paired) {
-      removedAt.push(paired ? ub[paired - 1] + 1 : hk.bStart);
-      removedRows += ua.length - paired;
+      const at = paired ? ub[paired - 1] + 1 : hk.bStart;
+      const gone = ua.slice(paired);
+      if (!isJitter(gone, at, paired > 0)) {
+        removedAt.push(at);
+        removedRows += gone.length;
+      }
     }
   });
   const beforeRange = (minY, maxY) => {

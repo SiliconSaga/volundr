@@ -48,6 +48,8 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, r));
 const base = `http://localhost:${server.address().port}`;
 
+const IMAGE_WAIT_MS = 10000;
+
 const VIEWPORTS = [
   { name: 'mobile', width: 390, height: 844 },
   { name: 'desktop', width: 1280, height: 800 },
@@ -71,6 +73,33 @@ try {
     for (const r of routes) {
       await page.goto(base + r, { waitUntil: 'networkidle' });
       await page.evaluate(() => document.fonts.ready);
+      // A full-page shot never scrolls, so loading="lazy" images below the fold
+      // may or may not have loaded — upac-site#2's home page lost a gallery
+      // image in one build and not the other. Scroll through the page, as a
+      // reader would, so lazy images (and scroll-triggered loaders) start,
+      // leaving every attribute as the page set it; then wait until no image
+      // is still loading. `complete` drops back to false while an error
+      // handler's fallback source loads, so that is waited for too. The wait
+      // is bounded: an image whose request was aborted never settles, and one
+      // stuck image must not hold every remaining route hostage — it is
+      // reported and the shot taken as the page stands.
+      await page.evaluate(async () => {
+        const frame = () => new Promise((done) => requestAnimationFrame(() => done()));
+        for (let y = 0; y < document.documentElement.scrollHeight; y += window.innerHeight) {
+          window.scrollTo(0, y);
+          await frame();
+        }
+        window.scrollTo(0, 0);
+        await frame();
+      });
+      try {
+        await page.waitForFunction(() => [...document.images].every((img) => img.complete),
+          null, { timeout: IMAGE_WAIT_MS });
+      } catch {
+        const pending = await page.evaluate(() => [...document.images]
+          .filter((img) => !img.complete).map((img) => img.currentSrc || img.src));
+        console.warn(`WARN ${r} at ${vp.name}: images still loading after ${IMAGE_WAIT_MS}ms: ${pending.join(', ')}`);
+      }
       await page.screenshot({
         path: join(outDir, `${san(r)}__${vp.name}.png`),
         fullPage: true,

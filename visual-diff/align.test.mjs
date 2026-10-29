@@ -121,12 +121,40 @@ test('a row removed next to a row inserted compares the new row with the old one
   assert.deepEqual(changedRows(al.baseline, page(after)), [31]);
 });
 
-test('more rows removed than inserted in one hunk leaves a seam for the rest', () => {
-  // Before ..., R1, R2, M, ...  after ..., M, I, ...
+test('a replaced block one row shorter is still caught, through its replaced row', () => {
+  // Before ..., R1, R2, M, ...  after ..., M, I, ...: I is judged against R1;
+  // the one-row surplus (R2) is a re-rendered block coming out shorter and
+  // gets no seam of its own — the replaced row already rings the spot.
   const after = [...body.slice(0, 30), body[32], 1, ...body.slice(33)];
   const al = alignRows(page(body), page(after));
-  assert.equal(al.removedRows, 1);
-  assert.deepEqual(al.removedAt, [32]);
+  assert.deepEqual(al.removedAt, []);
+  assert.deepEqual(changedRows(al.baseline, page(after)), [31]);
+});
+
+test('a dropped row that nearly repeats its neighbour is jitter, not a removal', () => {
+  // A photo re-rendered a fraction of a pixel off: one row vanishes, and the
+  // row now at its seam differs from it only slightly.
+  const before = [...body.slice(0, 30), 120, 124, ...body.slice(30)];
+  const after = [...body.slice(0, 30), 122, ...body.slice(30)];
+  const al = alignRows(page(before), page(after));
+  assert.deepEqual(al.removedAt, []);
+  assert.equal(al.removedRows, 0);
+});
+
+test('a purely removed row that resembles its seam row is jitter', () => {
+  // No replaced row in the hunk: the removal is judged on its pixels alone.
+  // Shade 124 sits within tolerance of body[30] (106), the row at the seam.
+  const before = [...body.slice(0, 30), 124, ...body.slice(30)];
+  const al = alignRows(page(before), page(body));
+  assert.deepEqual(al.removedAt, []);
+  assert.equal(al.removedRows, 0);
+});
+
+test('a removed 2px rule is still a removal', () => {
+  const before = [...body.slice(0, 30), 1, 1, ...body.slice(30)];
+  const al = alignRows(page(before), page(body));
+  assert.deepEqual(al.removedAt, [30]);
+  assert.equal(al.removedRows, 2);
 });
 
 test('pages too different to align return null', () => {
