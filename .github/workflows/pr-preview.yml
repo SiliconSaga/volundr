@@ -62,6 +62,19 @@ jobs:
           ruby-version: '3.3'
           bundler-cache: true
 
+      # Flyer exports: render them for this build when the PR touches
+      # flyers/**, rather than relying on flyer-export.yml's commit (whose
+      # follow-up runs are held as action_required) — see preview-exports.sh.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        if: steps.state.outputs.state == 'open'
+        with:
+          repository: SiliconSaga/volundr
+          path: .volundr
+
+      - name: Render flyer exports for the preview
+        if: steps.state.outputs.state == 'open'
+        run: bash .volundr/flyer-kit/preview-exports.sh
+
       - name: Build with the preview baseurl
         if: steps.state.outputs.state == 'open'
         env:
@@ -255,6 +268,12 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
+
+      # Same as the preview job: the candidate shows the exports the merge
+      # will deploy, not the ones committed before regeneration.
+      - name: Render flyer exports for the candidate
+        if: steps.state.outputs.state == 'open'
+        run: bash .volundr/flyer-kit/preview-exports.sh
 
       - name: Build candidate (PR) at baseurl ""
         if: steps.state.outputs.state == 'open'
