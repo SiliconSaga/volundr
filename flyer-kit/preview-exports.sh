@@ -21,8 +21,22 @@ set -euo pipefail
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY required}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-if ! gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --jq '.[].filename' \
-    | grep -q '^flyers/'; then
+# Fork PRs are skipped, exactly as flyer-export.yml skips them: rendering runs
+# the PR's own HTML in a browser on a runner whose checkout holds a token, and
+# flyer HTML can embed any local file. Same-repo PRs come from people who can
+# push anyway. A fork PR's preview shows the committed exports instead.
+head_repo="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '.head.repo.full_name')"
+if [ "$head_repo" != "$GITHUB_REPOSITORY" ]; then
+  echo "PR #${PR} comes from a fork (${head_repo}) — not rendering its flyer HTML; committed exports stay."
+  exit 0
+fi
+
+# Capture the whole file list first: piping straight into `grep -q` lets grep
+# exit on the first match while gh is still paging, and under pipefail that
+# broken pipe — or a plain API failure — would read as "no flyer changes" and
+# publish stale exports. An API failure fails the step instead.
+files="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --jq '.[].filename')"
+if ! grep -q '^flyers/' <<<"$files"; then
   echo "PR #${PR} touches no flyers/ files — committed exports are current."
   exit 0
 fi

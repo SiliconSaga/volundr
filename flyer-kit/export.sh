@@ -147,7 +147,18 @@ EOF_LINE
   case "$out" in
     .|..|*/*|*\\*) fail "outbase must be a plain filename, not a path: $out" ;;
   esac
+  # The html must live inside this campaign directory: a manifest naming
+  # ../../.git/config (or a symlink to it) would render a file holding the CI
+  # checkout's token into a published image. Checked on the resolved path,
+  # so symlinks cannot step outside either.
+  case "$html" in
+    /*|../*|*/../*|*/..|*\\*) fail "html must stay inside the campaign directory: $html" ;;
+  esac
   if [ ! -f "$html" ]; then fail "html file not found: $html"; fi
+  case "$(realpath "$html")" in
+    "$(realpath .)"/*) ;;
+    *) fail "html resolves outside the campaign directory: $html" ;;
+  esac
   w="${size%%x*}"; h="${size##*x}"
   case "$w" in ''|*[!0-9]*) fail "bad widthxheight: $size" ;; esac
   case "$h" in ''|*[!0-9]*) fail "bad widthxheight: $size" ;; esac
